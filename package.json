@@ -1,0 +1,20 @@
+{
+  "name": "cricket-platform",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "libs/*"
+  ],
+  "scripts": {
+    "start": "echo \"Start workspace\"",
+    "build": "echo \"Build all workspaces\"",
+    "test": "echo \"Run tests in workspaces\""
+  },
+  "dependencies": {
+    "@nestjs/platform-socket.io": "^11.1.11",
+    "@nestjs/websockets": "^11.1.11",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3"
+  }
+}

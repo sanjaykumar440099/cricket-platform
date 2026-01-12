@@ -5,12 +5,16 @@ export interface InningsState {
   totalRuns: number;
   wickets: number;
 
-  completedOvers: number;   // completed overs
-  ballsInOver: number;      // balls bowled in current over (0–5)
+  completedOvers: number;
+  ballsInOver: number;
 
   strikerId: string;
   nonStrikerId: string;
   currentBowlerId: string;
 
   isCompleted: boolean;
+
+  /** 🆕 Powerplay & Free Hit */
+  isPowerplay: boolean;
+  isFreeHit: boolean;
 }

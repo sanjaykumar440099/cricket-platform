@@ -1,8 +1,18 @@
 import { Injectable } from '@nestjs/common';
-
+import { JwtService } from '@nestjs/jwt';
+import { JwtPayload } from './types/jwt-payload.interface';
 @Injectable()
 export class AuthService {
-  login(payload: any) {
-    return { token: 'stub-token', payload };
+  constructor(private readonly jwtService: JwtService) {}
+
+  generateToken(userId: string, role: JwtPayload['role']) {
+    const payload: JwtPayload = {
+      sub: userId,
+      role,
+    };
+
+    return {
+      accessToken: this.jwtService.sign(payload),
+    };
   }
 }

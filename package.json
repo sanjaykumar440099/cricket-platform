@@ -9,7 +9,8 @@
   "scripts": {
     "start": "echo \"Start workspace\"",
     "build": "echo \"Build all workspaces\"",
-    "test": "echo \"Run tests in workspaces\""
+    "test": "echo \"Run tests in workspaces\"",
+    "start:api:debug": "npm --workspace apps/api run start:debug"
   },
   "dependencies": {
     "@nestjs/platform-socket.io": "^11.1.11",

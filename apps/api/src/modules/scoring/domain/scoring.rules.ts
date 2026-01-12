@@ -1,4 +1,4 @@
-import { BallEvent } from './ball.model';
+import { BallEvent } from './ball.event';
 
 export class ScoringRules {
   static isLegalDelivery(event: BallEvent): boolean {

@@ -1,5 +1,6 @@
 export class CreateMatchDto {
-  home: string;
-  away: string;
-  startAt?: Date;
+  teamAId!: string;
+  teamBId!: string;
+  oversLimit!: number;
+  startTime?: Date;
 }

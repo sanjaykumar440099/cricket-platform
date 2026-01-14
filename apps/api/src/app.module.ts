@@ -14,6 +14,11 @@ import { AuthModule } from './modules/auth/auth.module';
 import { MatchesModule } from './modules/matches/matches.module';
 import { InningsModule } from './modules/innings/innings.module';
 import { ScoresModule } from './modules/scores/scores.module';
+import { DlsModule } from './modules/dls/dls.module';
+import { TournamentsModule } from './modules/tournaments/tournaments.module';
+import { PlayoffsModule } from './modules/playoffs/playoffs.module';
+import { PublicModule } from './modules/public/public.module';
+import { RedisModule } from './modules/cache/redis.module';
 
 @Module({
     imports: [
@@ -31,7 +36,12 @@ import { ScoresModule } from './modules/scores/scores.module';
         InningsModule,
         BallsModule,
         LiveModule,
-        ScoresModule
+        ScoresModule,
+        DlsModule,
+        TournamentsModule,
+        PlayoffsModule,
+        PublicModule,
+        RedisModule
     ],
     controllers: [],
     providers: []

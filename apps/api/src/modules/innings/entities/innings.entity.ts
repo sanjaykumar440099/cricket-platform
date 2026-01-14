@@ -23,4 +23,9 @@ export class InningsEntity {
 
     @CreateDateColumn()
     createdAt!: Date;
+
+    /** 🆕 Super Over flag */
+    @Column({ default: false })
+    isSuperOver!: boolean;
+
 }

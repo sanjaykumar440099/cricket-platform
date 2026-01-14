@@ -38,6 +38,8 @@ export class ScoreSnapshotService {
     snapshot.ballsInOver = state.ballsInOver;
     snapshot.isFreeHit = state.isFreeHit;
     snapshot.isPowerplay = state.isPowerplay;
+    snapshot.powerplayPhase = state.powerplayPhase;
+    snapshot.maxFieldersOutside = state.maxFieldersOutside;
 
     return this.repo.save(snapshot);
   }

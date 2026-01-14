@@ -16,4 +16,6 @@ export class CreateBallDto {
 
   isWicket!: boolean;
   dismissedPlayerId?: string;
+
+  fieldersOutsideCircle!: number;
 }

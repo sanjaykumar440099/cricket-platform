@@ -5,13 +5,16 @@ export class MatchEntity {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column()
+  @Column({ type: 'varchar', length: 36, nullable: true })
+  tournamentId!: string | null;
+
+  @Column({ type: 'varchar', length: 36 })
   teamAId!: string;
 
-  @Column()
+  @Column({ type: 'varchar', length: 36 })
   teamBId!: string;
 
-  @Column()
+  @Column({ type: 'int' })
   oversLimit!: number;
 
   @Column({
@@ -21,8 +24,14 @@ export class MatchEntity {
   })
   status!: 'scheduled' | 'live' | 'completed';
 
-  @Column({ type: 'datetime', nullable: true })
-  startTime?: Date;
+  @Column({ type: 'varchar', length: 36, nullable: true })
+  winnerTeamId!: string | null;
+
+  @Column({ type: 'boolean', default: false })
+  isTie!: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  isNoResult!: boolean;
 
   @CreateDateColumn()
   createdAt!: Date;

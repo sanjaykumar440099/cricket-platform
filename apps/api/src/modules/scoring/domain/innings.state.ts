@@ -16,5 +16,10 @@ export interface InningsState {
 
   /** 🆕 Powerplay & Free Hit */
   isPowerplay: boolean;
+
+  powerplayPhase: string | null;   // e.g. 'PP1', 'PP2'
+  maxFieldersOutside: number;
+
+  // 🔹 Free hit
   isFreeHit: boolean;
 }

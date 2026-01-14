@@ -1,14 +1,24 @@
 import { BallEvent } from './domain/ball.event';
 import { InningsState } from './domain/innings.state';
 import { ScoringRules } from './domain/scoring.rules';
-
+import { ODI_POWERPLAYS } from './domain/powerplay.config';
 export class ScoringEngine {
   static applyBall(state: InningsState, event: BallEvent): InningsState {
+
     if (state.isCompleted) {
       return state;
     }
 
     let { totalRuns, wickets, completedOvers, ballsInOver, strikerId, nonStrikerId } = state;
+
+    const currentOver = completedOvers;
+    const phase =
+      ODI_POWERPLAYS.find(
+        p => currentOver >= p.fromOver && currentOver < p.toOver,
+      ) ?? null;
+
+    const powerplayPhase = phase?.name ?? null;
+    const maxFieldersOutside = phase?.maxFieldersOutside ?? 5;
 
     // 0️⃣ Capture previous flags
     let { isFreeHit } = state;
@@ -62,6 +72,11 @@ export class ScoringEngine {
       ballsInOver,
       strikerId,
       nonStrikerId,
+
+      powerplayPhase,
+      maxFieldersOutside,
+
+      isFreeHit,
     };
   }
 

@@ -5,13 +5,15 @@ import { Repository } from 'typeorm';
 import { MatchEntity } from './entities/match.entity';
 import { CreateMatchDto } from './dto/create-match.dto';
 import { JwtPayload } from '../auth/types/jwt-payload.interface';
+import { PointsTableService } from '../tournaments/points-table.service';
 
 @Injectable()
 export class MatchesService {
   constructor(
     @InjectRepository(MatchEntity)
     private readonly matchRepo: Repository<MatchEntity>,
-  ) {}
+    private readonly pointsTableService: PointsTableService
+  ) { }
 
   async createMatch(dto: CreateMatchDto, user: JwtPayload) {
     if (!['admin', 'scorer'].includes(user.role)) {
@@ -22,9 +24,10 @@ export class MatchesService {
       teamAId: dto.teamAId,
       teamBId: dto.teamBId,
       oversLimit: dto.oversLimit,
-      startTime: dto.startTime,
+      tournamentId: dto.tournamentId ?? null,
+      startTime: dto.startTime ?? null,
       status: 'scheduled',
-    });
+    } as Partial<MatchEntity>);
 
     return this.matchRepo.save(match);
   }
@@ -49,5 +52,43 @@ export class MatchesService {
 
   async listMatches() {
     return this.matchRepo.find({ order: { createdAt: 'DESC' } });
+  }
+
+  async completeMatch(
+    matchId: string,
+    result: {
+      winnerTeamId?: string;
+      isTie?: boolean;
+      isNoResult?: boolean;
+    },
+    user: JwtPayload,
+  ) {
+    if (!['admin', 'scorer'].includes(user.role)) {
+      throw new ForbiddenException();
+    }
+
+    const match = await this.matchRepo.findOne({ where: { id: matchId } });
+    if (!match) throw new NotFoundException('Match not found');
+
+    match.status = 'completed';
+    match.winnerTeamId = result.winnerTeamId ?? null;
+    match.isTie = !!result.isTie;
+    match.isNoResult = !!result.isNoResult;
+
+    await this.matchRepo.save(match);
+
+    // 🏆 UPDATE POINTS TABLE (ONLY HERE)
+    if (match.tournamentId) {
+      await this.pointsTableService.recordResult(
+        match.tournamentId,
+        match.winnerTeamId,
+        match.teamAId,
+        match.teamBId,
+        match.isTie,
+        match.isNoResult,
+      );
+    }
+
+    return match;
   }
 }

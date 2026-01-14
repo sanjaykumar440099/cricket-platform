@@ -1,4 +1,9 @@
-import { Injectable, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  ForbiddenException,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
@@ -14,170 +19,195 @@ import { ScoreSnapshotService } from '../scores/score-snapshot.service';
 
 import { JwtPayload } from '../auth/types/jwt-payload.interface';
 import { ScoringValidator } from '../scoring/validators/scoring.validator';
+import { AdvancedScoringValidator } from '../scoring/validators/advanced-scoring.validator';
+import { FieldingValidator } from '../scoring/validators/fielding.validator';
+import { SuperOverValidator } from '../scoring/validators/super-over.validator';
+
 import { InningsEntity } from '../innings/entities/innings.entity';
 import { MatchEntity } from '../matches/entities/match.entity';
-import { AdvancedScoringValidator } from '../scoring/validators/advanced-scoring.validator';
+import { ODI_POWERPLAYS } from '../scoring/domain/powerplay.config';
+import { ScoreSnapshotEntity } from '../scores/entities/score-snapshot.entity';
+import { RedisService } from '../cache/redis.service';
+import { CacheKeys } from '../cache/cache.keys';
 
 @Injectable()
 export class BallsService {
-    constructor(
-        @InjectRepository(BallEntity)
-        private readonly ballRepo: Repository<BallEntity>,
+  constructor(
+    @InjectRepository(BallEntity)
+    private readonly ballRepo: Repository<BallEntity>,
 
-        @InjectRepository(InningsEntity)
-        private readonly inningsRepo: Repository<InningsEntity>,
+    @InjectRepository(InningsEntity)
+    private readonly inningsRepo: Repository<InningsEntity>,
 
-        @InjectRepository(MatchEntity)
-        private readonly matchRepo: Repository<MatchEntity>,
+    @InjectRepository(MatchEntity)
+    private readonly matchRepo: Repository<MatchEntity>,
 
-        private readonly liveService: LiveService,
-        private readonly snapshotService: ScoreSnapshotService,
-    ) { }
+    private readonly liveService: LiveService,
+    private readonly snapshotService: ScoreSnapshotService,
+    private readonly redisService: RedisService,
+  ) { }
 
-    async addBall(dto: CreateBallDto, user: JwtPayload) {
-        /** 0️⃣ Role check */
-        if (!['admin', 'scorer'].includes(user.role)) {
-            throw new ForbiddenException('Only scorers can add balls');
-        }
-
-        /** 1️⃣ Load innings */
-        const innings = await this.inningsRepo.findOne({
-            where: { id: dto.inningsId },
-        });
-        if (!innings) {
-            throw new ForbiddenException('Invalid innings');
-        }
-
-        /** 2️⃣ Load match */
-        const match = await this.matchRepo.findOne({
-            where: { id: innings.matchId },
-        });
-        if (!match) {
-            throw new ForbiddenException('Match not found');
-        }
-
-        /** 3️⃣ Load snapshot (FAST PATH) */
-
-        const snapshot = await this.snapshotService.getSnapshot(dto.inningsId);
-        const isFreeHit = snapshot?.isFreeHit ?? false;
-        const ballsInOver = snapshot ? snapshot.ballsInOver : 0;
-
-        // Load all previous balls (READ ONLY)
-        const balls = await this.ballRepo.find({
-            where: { inningsId: dto.inningsId },
-            order: { createdAt: 'ASC' },
-        });
-
-        /** 4️⃣ 🔐 VALIDATE BALL (CRITICAL) */
-        ScoringValidator.validateBall(
-            dto,
-            innings,
-            ballsInOver,
-            match.oversLimit,
-        );
-
-        // Advanced cricket rules
-        AdvancedScoringValidator.validate(
-            dto,
-            innings,
-            balls,
-            match.oversLimit,
-            isFreeHit
-        );
-
-        /** 5️⃣ Persist ball (IMMUTABLE EVENT) */
-        const ball = await this.ballRepo.save(
-            this.ballRepo.create({
-                inningsId: dto.inningsId,
-                overNumber: dto.overNumber,
-                ballNumber: dto.ballNumber,
-                strikerId: dto.strikerId,
-                nonStrikerId: dto.nonStrikerId,
-                bowlerId: dto.bowlerId,
-                runsOffBat: dto.runsOffBat,
-                extras: dto.extras,
-                extraType: dto.extraType ?? undefined,
-                isWicket: dto.isWicket,
-                dismissedPlayerId: dto.dismissedPlayerId,
-            }),
-        );
-
-        /** 6️⃣ Load state from snapshot */
-        let state = await this.loadStateFromSnapshot(dto);
-
-        /** 7️⃣ Apply ONLY the new ball */
-        const event: BallEvent = {
-            over: ball.overNumber,
-            ball: ball.ballNumber,
-            runsOffBat: ball.runsOffBat,
-            extras: ball.extras,
-            extraType: ball.extraType ?? null,
-            isWicket: ball.isWicket,
-            dismissedPlayerId: ball.dismissedPlayerId,
-            strikerId: ball.strikerId,
-            nonStrikerId: ball.nonStrikerId,
-            bowlerId: ball.bowlerId,
-        };
-
-        state = ScoringEngine.applyBall(state, event);
-
-        /** 8️⃣ Update snapshot */
-        await this.snapshotService.upsertSnapshot(dto.inningsId, state);
-
-        /** 9️⃣ Calculate derived score */
-        const score = ScoringEngine.calculateScore(state);
-
-        /** 🔟 Emit live WebSocket update */
-        this.liveService.emitScore(dto.inningsId, {
-            inningsId: dto.inningsId,
-            score,
-            state,
-            lastBall: dto,
-        });
-
-        /** 11️⃣ Return response */
-        return { score, state };
+  async addBall(dto: CreateBallDto, user: JwtPayload) {
+    /* 0️⃣ Role check */
+    if (!['admin', 'scorer'].includes(user.role)) {
+      throw new ForbiddenException('Only scorers can add balls');
     }
 
-
-    /** 🔁 Snapshot → InningsState */
-    private async loadStateFromSnapshot(dto: CreateBallDto): Promise<InningsState> {
-        const snapshot = await this.snapshotService.getSnapshot(dto.inningsId);
-
-        if (!snapshot) {
-            return {
-                battingTeamId: '',
-                bowlingTeamId: '',
-                totalRuns: 0,
-                wickets: 0,
-                completedOvers: 0,
-                ballsInOver: 0,
-                strikerId: dto.strikerId,
-                nonStrikerId: dto.nonStrikerId,
-                currentBowlerId: dto.bowlerId,
-                isCompleted: false,
-
-                isFreeHit: false,
-                isPowerplay: true,
-            };
-
-        }
-
-        return {
-            battingTeamId: '',
-            bowlingTeamId: '',
-            totalRuns: snapshot.totalRuns,
-            wickets: snapshot.wickets,
-            completedOvers: snapshot.completedOvers,
-            ballsInOver: snapshot.ballsInOver,
-            strikerId: dto.strikerId,
-            nonStrikerId: dto.nonStrikerId,
-            currentBowlerId: dto.bowlerId,
-            isCompleted: false,
-
-            isFreeHit: snapshot.isFreeHit,
-            isPowerplay: snapshot.completedOvers < 6,
-        };
-
+    /* 1️⃣ Load innings */
+    const innings = await this.inningsRepo.findOne({
+      where: { id: dto.inningsId },
+    });
+    if (!innings) {
+      throw new BadRequestException('Invalid innings');
     }
+
+    /* 2️⃣ Load match */
+    const match = await this.matchRepo.findOne({
+      where: { id: innings.matchId },
+    });
+    if (!match) {
+      throw new NotFoundException('Match not found');
+    }
+
+    /* 3️⃣ Load snapshot ONCE */
+    const snapshot = await this.snapshotService.getSnapshot(dto.inningsId);
+    const ballsInOver = snapshot?.ballsInOver ?? 0;
+    const isFreeHit = snapshot?.isFreeHit ?? false;
+
+    /* 🔐 Super Over hard-stop */
+    SuperOverValidator.validate(innings, snapshot);
+
+    /* 4️⃣ Load historical balls (read-only) */
+    const balls = await this.ballRepo.find({
+      where: { inningsId: dto.inningsId },
+      order: { createdAt: 'ASC' },
+    });
+
+    /* 5️⃣ Core validation */
+    ScoringValidator.validateBall(
+      dto,
+      innings,
+      ballsInOver,
+      match.oversLimit,
+    );
+
+    AdvancedScoringValidator.validate(
+      dto,
+      innings,
+      balls,
+      match.oversLimit,
+      isFreeHit,
+    );
+
+    /* 6️⃣ Load state (from snapshot) */
+    let state = this.buildStateFromSnapshot(dto, snapshot);
+
+    /* 🔐 Fielding validation (BEFORE write) */
+    FieldingValidator.validate(dto, state);
+
+    /* 7️⃣ Persist immutable ball event */
+    const ball = await this.ballRepo.save(
+      this.ballRepo.create({
+        inningsId: dto.inningsId,
+        overNumber: dto.overNumber,
+        ballNumber: dto.ballNumber,
+        strikerId: dto.strikerId,
+        nonStrikerId: dto.nonStrikerId,
+        bowlerId: dto.bowlerId,
+        runsOffBat: dto.runsOffBat,
+        extras: dto.extras,
+        extraType: dto.extraType ?? undefined,
+        isWicket: dto.isWicket,
+        dismissedPlayerId: dto.dismissedPlayerId,
+      }),
+    );
+
+    /* 8️⃣ Apply scoring engine */
+    const event: BallEvent = {
+      over: ball.overNumber,
+      ball: ball.ballNumber,
+      runsOffBat: ball.runsOffBat,
+      extras: ball.extras,
+      extraType: ball.extraType ?? null,
+      isWicket: ball.isWicket,
+      dismissedPlayerId: ball.dismissedPlayerId,
+      strikerId: ball.strikerId,
+      nonStrikerId: ball.nonStrikerId,
+      bowlerId: ball.bowlerId,
+    };
+
+    state = ScoringEngine.applyBall(state, event);
+
+    /* 9️⃣ Persist snapshot */
+    await this.snapshotService.upsertSnapshot(dto.inningsId, state);
+
+    /* 🔟 Auto-end Super Over */
+    if (
+      innings.isSuperOver &&
+      (state.completedOvers * 6 + state.ballsInOver >= 6 ||
+        state.wickets >= 2)
+    ) {
+      await this.inningsRepo.update(
+        { id: innings.id },
+        { isCompleted: true },
+      );
+    }
+
+    /* 11️⃣ Emit live update */
+    const score = ScoringEngine.calculateScore(state);
+    this.liveService.emitScore(dto.inningsId, {
+      inningsId: dto.inningsId,
+      score,
+      state,
+      lastBall: dto,
+    });
+
+    await this.redisService.set(CacheKeys.liveScore(match.id), state);
+
+    return { score, state };
+  }
+
+  /* 🔁 Snapshot → InningsState */
+  private buildStateFromSnapshot(
+    dto: CreateBallDto,
+    snapshot: ScoreSnapshotEntity | null,
+  ): InningsState {
+    const firstPP = ODI_POWERPLAYS[0];
+
+    if (!snapshot) {
+      return {
+        battingTeamId: '',
+        bowlingTeamId: '',
+        totalRuns: 0,
+        wickets: 0,
+        completedOvers: 0,
+        ballsInOver: 0,
+        strikerId: dto.strikerId,
+        nonStrikerId: dto.nonStrikerId,
+        currentBowlerId: dto.bowlerId,
+        isCompleted: false,
+        isFreeHit: false,
+        powerplayPhase: firstPP.name,
+        maxFieldersOutside: firstPP.maxFieldersOutside,
+        isPowerplay: true
+      };
+    }
+
+    return {
+      battingTeamId: '',
+      bowlingTeamId: '',
+      totalRuns: snapshot.totalRuns,
+      wickets: snapshot.wickets,
+      completedOvers: snapshot.completedOvers,
+      ballsInOver: snapshot.ballsInOver,
+      strikerId: dto.strikerId,
+      nonStrikerId: dto.nonStrikerId,
+      currentBowlerId: dto.bowlerId,
+      isCompleted: false,
+      isFreeHit: snapshot.isFreeHit,
+      powerplayPhase: snapshot.powerplayPhase,
+      maxFieldersOutside: snapshot.maxFieldersOutside,
+      isPowerplay: snapshot.completedOvers < 6,
+    };
+  }
 }

@@ -25,4 +25,15 @@ export class ScoreSnapshotEntity {
 
     @Column({ default: true })
     isPowerplay!: boolean;
+
+    @Column({
+        type: 'varchar',
+        length: 10,
+        nullable: true,
+    })
+    powerplayPhase!: string | null;
+
+
+    @Column()
+    maxFieldersOutside!: number;
 }

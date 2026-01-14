@@ -6,7 +6,7 @@ import { JwtPayload } from '../auth/types/jwt-payload.interface';
 
 @Controller('matches')
 export class MatchesController {
-  constructor(private readonly matchesService: MatchesService) {}
+  constructor(private readonly matchesService: MatchesService) { }
 
   @Post()
   createMatch(@Body() dto: CreateMatchDto, @WsUser() user: JwtPayload) {
@@ -26,5 +26,18 @@ export class MatchesController {
   @Get()
   listMatches() {
     return this.matchesService.listMatches();
+  }
+
+  @Post(':id/complete')
+  complete(
+    @Param('id') id: string,
+    @Body() body: {
+      winnerTeamId?: string;
+      isTie?: boolean;
+      isNoResult?: boolean;
+    },
+    @WsUser() user: JwtPayload,
+  ) {
+    return this.matchesService.completeMatch(id, body, user);
   }
 }

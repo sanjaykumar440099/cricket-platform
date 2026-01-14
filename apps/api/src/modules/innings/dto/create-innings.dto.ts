@@ -3,4 +3,5 @@ export class CreateInningsDto {
   battingTeamId!: string;
   bowlingTeamId!: string;
   inningsNumber!: number;
+  isSuperOver?: boolean;
 }

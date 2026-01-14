@@ -27,8 +27,6 @@ import { InningsEntity } from '../innings/entities/innings.entity';
 import { MatchEntity } from '../matches/entities/match.entity';
 import { ODI_POWERPLAYS } from '../scoring/domain/powerplay.config';
 import { ScoreSnapshotEntity } from '../scores/entities/score-snapshot.entity';
-import { RedisService } from '../cache/redis.service';
-import { CacheKeys } from '../cache/cache.keys';
 
 @Injectable()
 export class BallsService {
@@ -44,7 +42,6 @@ export class BallsService {
 
     private readonly liveService: LiveService,
     private readonly snapshotService: ScoreSnapshotService,
-    private readonly redisService: RedisService,
   ) { }
 
   async addBall(dto: CreateBallDto, user: JwtPayload) {
@@ -69,12 +66,15 @@ export class BallsService {
       throw new NotFoundException('Match not found');
     }
 
-    /* 3️⃣ Load snapshot ONCE */
+    /* 3️⃣ Load snapshot */
     const snapshot = await this.snapshotService.getSnapshot(dto.inningsId);
+
     const ballsInOver = snapshot?.ballsInOver ?? 0;
     const isFreeHit = snapshot?.isFreeHit ?? false;
+    const lastEventId = snapshot?.lastEventId ?? 0;
+    const eventId = lastEventId + 1;
 
-    /* 🔐 Super Over hard-stop */
+    /* 🔐 Super Over hard stop */
     SuperOverValidator.validate(innings, snapshot);
 
     /* 4️⃣ Load historical balls (read-only) */
@@ -83,7 +83,7 @@ export class BallsService {
       order: { createdAt: 'ASC' },
     });
 
-    /* 5️⃣ Core validation */
+    /* 5️⃣ Core validations */
     ScoringValidator.validateBall(
       dto,
       innings,
@@ -99,13 +99,13 @@ export class BallsService {
       isFreeHit,
     );
 
-    /* 6️⃣ Load state (from snapshot) */
+    /* 6️⃣ Build state from snapshot */
     let state = this.buildStateFromSnapshot(dto, snapshot);
 
-    /* 🔐 Fielding validation (BEFORE write) */
+    /* 🔐 Fielding rules */
     FieldingValidator.validate(dto, state);
 
-    /* 7️⃣ Persist immutable ball event */
+    /* 7️⃣ Persist immutable ball */
     const ball = await this.ballRepo.save(
       this.ballRepo.create({
         inningsId: dto.inningsId,
@@ -139,7 +139,7 @@ export class BallsService {
     state = ScoringEngine.applyBall(state, event);
 
     /* 9️⃣ Persist snapshot */
-    await this.snapshotService.upsertSnapshot(dto.inningsId, state);
+    await this.snapshotService.upsertSnapshot(dto.inningsId, state, eventId);
 
     /* 🔟 Auto-end Super Over */
     if (
@@ -155,14 +155,20 @@ export class BallsService {
 
     /* 11️⃣ Emit live update */
     const score = ScoringEngine.calculateScore(state);
-    this.liveService.emitScore(dto.inningsId, {
+
+    this.liveService.emitScoreUpdate(match.id, {
+      eventId,
       inningsId: dto.inningsId,
       score,
       state,
       lastBall: dto,
     });
 
-    await this.redisService.set(CacheKeys.liveScore(match.id), state);
+    /* 🔁 Save resumable live state (Redis) */
+    await this.liveService.saveLiveState(match.id, {
+      state,
+      lastEventId: eventId,
+    });
 
     return { score, state };
   }
@@ -189,7 +195,7 @@ export class BallsService {
         isFreeHit: false,
         powerplayPhase: firstPP.name,
         maxFieldersOutside: firstPP.maxFieldersOutside,
-        isPowerplay: true
+        isPowerplay: true,
       };
     }
 

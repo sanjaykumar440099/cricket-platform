@@ -12,37 +12,24 @@ export class ScoreSnapshotService {
     private readonly repo: Repository<ScoreSnapshotEntity>,
   ) { }
 
-  async upsertSnapshot(
-    inningsId: string,
-    state: InningsState,
-  ): Promise<ScoreSnapshotEntity> {
-    const snapshot = await this.repo.findOne({
-      where: { inningsId },
-    });
+ async upsertSnapshot(
+  inningsId: string,
+  state: InningsState,
+  lastEventId: number,
+) {
+  await this.repo.save({
+    inningsId,
+    totalRuns: state.totalRuns,
+    wickets: state.wickets,
+    completedOvers: state.completedOvers,
+    ballsInOver: state.ballsInOver,
+    isFreeHit: state.isFreeHit,
+    powerplayPhase: state.powerplayPhase,
+    maxFieldersOutside: state.maxFieldersOutside,
+    lastEventId,
+  });
+}
 
-    if (!snapshot) {
-      return this.repo.save({
-        inningsId,
-        totalRuns: state.totalRuns,
-        wickets: state.wickets,
-        completedOvers: state.completedOvers,
-        ballsInOver: state.ballsInOver,
-        isFreeHit: state.isFreeHit,
-        isPowerplay: state.isPowerplay,
-      });
-    }
-
-    snapshot.totalRuns = state.totalRuns;
-    snapshot.wickets = state.wickets;
-    snapshot.completedOvers = state.completedOvers;
-    snapshot.ballsInOver = state.ballsInOver;
-    snapshot.isFreeHit = state.isFreeHit;
-    snapshot.isPowerplay = state.isPowerplay;
-    snapshot.powerplayPhase = state.powerplayPhase;
-    snapshot.maxFieldersOutside = state.maxFieldersOutside;
-
-    return this.repo.save(snapshot);
-  }
 
 
   async getSnapshot(inningsId: string) {

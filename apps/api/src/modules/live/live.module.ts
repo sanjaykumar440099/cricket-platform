@@ -1,17 +1,16 @@
-import { Module } from '@nestjs/common';
-import { MatchGateway } from './gateways/match.gateway';
+import { Module, forwardRef } from '@nestjs/common';
 import { LiveService } from './live.service';
-import { WsAuthGuard } from './guards/ws-auth.guard';
+import { MatchGateway } from './gateways/match.gateway';
+import { RedisModule } from '../cache/redis.module';
 import { AuthModule } from '../auth/auth.module';
+
 @Module({
   imports: [
-    AuthModule, // 👈 THIS FIXES THE ERROR
+    RedisModule,
+    forwardRef(() => LiveModule), // 👈 IMPORTANT
+    AuthModule
   ],
-  providers: [
-    MatchGateway,
-    LiveService,
-    WsAuthGuard,
-  ],
+  providers: [LiveService, MatchGateway],
   exports: [LiveService],
 })
 export class LiveModule {}

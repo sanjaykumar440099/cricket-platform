@@ -36,4 +36,7 @@ export class ScoreSnapshotEntity {
 
     @Column()
     maxFieldersOutside!: number;
+
+    @Column({ default: 0 })
+    lastEventId!: number;
 }

@@ -7,13 +7,17 @@ import { CreateMatchDto } from './dto/create-match.dto';
 import { JwtPayload } from '../auth/types/jwt-payload.interface';
 import { PointsTableService } from '../tournaments/points-table.service';
 
+import { redis } from '../cache/redis.client';
+import { CacheKeys } from '../cache/cache.keys';
+import { cleanupMatch } from '../cache/match.cache';
+
 @Injectable()
 export class MatchesService {
   constructor(
     @InjectRepository(MatchEntity)
     private readonly matchRepo: Repository<MatchEntity>,
     private readonly pointsTableService: PointsTableService
-  ) { }
+  ) {}
 
   async createMatch(dto: CreateMatchDto, user: JwtPayload) {
     if (!['admin', 'scorer'].includes(user.role)) {
@@ -41,7 +45,12 @@ export class MatchesService {
     if (!match) throw new NotFoundException('Match not found');
 
     match.status = 'live';
-    return this.matchRepo.save(match);
+    const saved = await this.matchRepo.save(match);
+
+    // 🔴 REGISTER LIVE MATCH
+    await redis.sadd(CacheKeys.liveMatches(), matchId);
+
+    return saved;
   }
 
   async getMatch(matchId: string) {
@@ -77,7 +86,7 @@ export class MatchesService {
 
     await this.matchRepo.save(match);
 
-    // 🏆 UPDATE POINTS TABLE (ONLY HERE)
+    // 🏆 UPDATE POINTS TABLE
     if (match.tournamentId) {
       await this.pointsTableService.recordResult(
         match.tournamentId,
@@ -88,6 +97,9 @@ export class MatchesService {
         match.isNoResult,
       );
     }
+
+    // 🔴 CLEAN REDIS LIVE STATE
+    await cleanupMatch(matchId);
 
     return match;
   }

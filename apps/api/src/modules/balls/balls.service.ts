@@ -28,6 +28,10 @@ import { MatchEntity } from '../matches/entities/match.entity';
 import { ODI_POWERPLAYS } from '../scoring/domain/powerplay.config';
 import { ScoreSnapshotEntity } from '../scores/entities/score-snapshot.entity';
 
+import { CacheKeys } from '../cache/cache.keys';
+import { LiveEvent } from '../live/types/live-event.type';
+import { RedisService } from '../cache/redis.service';
+
 @Injectable()
 export class BallsService {
   constructor(
@@ -42,15 +46,14 @@ export class BallsService {
 
     private readonly liveService: LiveService,
     private readonly snapshotService: ScoreSnapshotService,
+    private readonly redisService: RedisService,
   ) { }
 
   async addBall(dto: CreateBallDto, user: JwtPayload) {
-    /* 0️⃣ Role check */
     if (!['admin', 'scorer'].includes(user.role)) {
       throw new ForbiddenException('Only scorers can add balls');
     }
 
-    /* 1️⃣ Load innings */
     const innings = await this.inningsRepo.findOne({
       where: { id: dto.inningsId },
     });
@@ -58,7 +61,6 @@ export class BallsService {
       throw new BadRequestException('Invalid innings');
     }
 
-    /* 2️⃣ Load match */
     const match = await this.matchRepo.findOne({
       where: { id: innings.matchId },
     });
@@ -66,114 +68,133 @@ export class BallsService {
       throw new NotFoundException('Match not found');
     }
 
-    /* 3️⃣ Load snapshot */
-    const snapshot = await this.snapshotService.getSnapshot(dto.inningsId);
-
-    const ballsInOver = snapshot?.ballsInOver ?? 0;
-    const isFreeHit = snapshot?.isFreeHit ?? false;
-    const lastEventId = snapshot?.lastEventId ?? 0;
-    const eventId = lastEventId + 1;
-
-    /* 🔐 Super Over hard stop */
-    SuperOverValidator.validate(innings, snapshot);
-
-    /* 4️⃣ Load historical balls (read-only) */
-    const balls = await this.ballRepo.find({
-      where: { inningsId: dto.inningsId },
-      order: { createdAt: 'ASC' },
-    });
-
-    /* 5️⃣ Core validations */
-    ScoringValidator.validateBall(
-      dto,
-      innings,
-      ballsInOver,
-      match.oversLimit,
-    );
-
-    AdvancedScoringValidator.validate(
-      dto,
-      innings,
-      balls,
-      match.oversLimit,
-      isFreeHit,
-    );
-
-    /* 6️⃣ Build state from snapshot */
-    let state = this.buildStateFromSnapshot(dto, snapshot);
-
-    /* 🔐 Fielding rules */
-    FieldingValidator.validate(dto, state);
-
-    /* 7️⃣ Persist immutable ball */
-    const ball = await this.ballRepo.save(
-      this.ballRepo.create({
-        inningsId: dto.inningsId,
-        overNumber: dto.overNumber,
-        ballNumber: dto.ballNumber,
-        strikerId: dto.strikerId,
-        nonStrikerId: dto.nonStrikerId,
-        bowlerId: dto.bowlerId,
-        runsOffBat: dto.runsOffBat,
-        extras: dto.extras,
-        extraType: dto.extraType ?? undefined,
-        isWicket: dto.isWicket,
-        dismissedPlayerId: dto.dismissedPlayerId,
-      }),
-    );
-
-    /* 8️⃣ Apply scoring engine */
-    const event: BallEvent = {
-      over: ball.overNumber,
-      ball: ball.ballNumber,
-      runsOffBat: ball.runsOffBat,
-      extras: ball.extras,
-      extraType: ball.extraType ?? null,
-      isWicket: ball.isWicket,
-      dismissedPlayerId: ball.dismissedPlayerId,
-      strikerId: ball.strikerId,
-      nonStrikerId: ball.nonStrikerId,
-      bowlerId: ball.bowlerId,
-    };
-
-    state = ScoringEngine.applyBall(state, event);
-
-    /* 9️⃣ Persist snapshot */
-    await this.snapshotService.upsertSnapshot(dto.inningsId, state, eventId);
-
-    /* 🔟 Auto-end Super Over */
-    if (
-      innings.isSuperOver &&
-      (state.completedOvers * 6 + state.ballsInOver >= 6 ||
-        state.wickets >= 2)
-    ) {
-      await this.inningsRepo.update(
-        { id: innings.id },
-        { isCompleted: true },
-      );
+    const lockKey = CacheKeys.matchLock(match.id);
+    const token = await this.redisService.acquireLock(lockKey);
+    if (!token) {
+      throw new BadRequestException('Scoring lock is currently held. Try again.');
     }
 
-    /* 11️⃣ Emit live update */
-    const score = ScoringEngine.calculateScore(state);
+    try {
+      const snapshot = await this.snapshotService.getSnapshot(dto.inningsId);
 
-    this.liveService.emitScoreUpdate(match.id, {
-      eventId,
-      inningsId: dto.inningsId,
-      score,
-      state,
-      lastBall: dto,
-    });
+      const ballsInOver = snapshot?.ballsInOver ?? 0;
+      const isFreeHit = snapshot?.isFreeHit ?? false;
+      const lastEventId = snapshot?.lastEventId ?? 0;
+      const eventId = lastEventId + 1;
 
-    /* 🔁 Save resumable live state (Redis) */
-    await this.liveService.saveLiveState(match.id, {
-      state,
-      lastEventId: eventId,
-    });
+      SuperOverValidator.validate(innings, snapshot);
 
-    return { score, state };
+      const balls = await this.ballRepo.find({
+        where: { inningsId: dto.inningsId },
+        order: { createdAt: 'ASC' },
+      });
+
+      ScoringValidator.validateBall(
+        dto,
+        innings,
+        ballsInOver,
+        match.oversLimit,
+      );
+
+      AdvancedScoringValidator.validate(
+        dto,
+        innings,
+        balls,
+        match.oversLimit,
+        isFreeHit,
+      );
+
+      let state = this.buildStateFromSnapshot(dto, snapshot);
+
+      FieldingValidator.validate(dto, state);
+
+      const ball = await this.ballRepo.save(
+        this.ballRepo.create({
+          inningsId: dto.inningsId,
+          overNumber: dto.overNumber,
+          ballNumber: dto.ballNumber,
+          strikerId: dto.strikerId,
+          nonStrikerId: dto.nonStrikerId,
+          bowlerId: dto.bowlerId,
+          runsOffBat: dto.runsOffBat,
+          extras: dto.extras,
+          extraType: dto.extraType ?? undefined,
+          isWicket: dto.isWicket,
+          dismissedPlayerId: dto.dismissedPlayerId,
+        }),
+      );
+
+      const ballEvent: BallEvent = {
+        over: ball.overNumber,
+        ball: ball.ballNumber,
+        runsOffBat: ball.runsOffBat,
+        extras: ball.extras,
+        extraType: ball.extraType ?? null,
+        isWicket: ball.isWicket,
+        dismissedPlayerId: ball.dismissedPlayerId,
+        strikerId: ball.strikerId,
+        nonStrikerId: ball.nonStrikerId,
+        bowlerId: ball.bowlerId,
+      };
+
+      state = ScoringEngine.applyBall(state, ballEvent);
+
+      await this.snapshotService.upsertSnapshot(dto.inningsId, state, eventId);
+
+      const liveEvent: LiveEvent = {
+        eventId,
+        payload: {
+          state,
+          lastBall: dto,
+        },
+        timestamp: Date.now(),
+      };
+
+      const existingEvents =
+        (await this.redisService.get<LiveEvent[]>(
+          CacheKeys.liveEvents(match.id),
+        )) || [];
+
+      await this.redisService.set(
+        CacheKeys.liveEvents(match.id),
+        [...existingEvents, liveEvent].slice(-50),
+      );
+
+      if (
+        innings.isSuperOver &&
+        (state.completedOvers * 6 + state.ballsInOver >= 6 ||
+          state.wickets >= 2)
+      ) {
+        await this.inningsRepo.update(
+          { id: innings.id },
+          { isCompleted: true },
+        );
+      }
+
+      await this.liveService.saveLiveState(match.id, {
+        state,
+        lastEventId: eventId,
+      });
+
+      await this.redisService.publish(
+        CacheKeys.scoreUpdate(match.id),
+        {
+          matchId: match.id,
+          eventId,
+          inningsId: dto.inningsId,
+          state,
+          lastBall: dto,
+        },
+      );
+
+      const score = ScoringEngine.calculateScore(state);
+
+      return { score, state };
+    } finally {
+      await this.redisService.releaseLock(lockKey, token);
+    }
   }
 
-  /* 🔁 Snapshot → InningsState */
   private buildStateFromSnapshot(
     dto: CreateBallDto,
     snapshot: ScoreSnapshotEntity | null,

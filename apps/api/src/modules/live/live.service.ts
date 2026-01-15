@@ -3,6 +3,7 @@ import { RedisService } from '../cache/redis.service';
 import { MatchGateway } from './gateways/match.gateway';
 import { CacheKeys } from '../cache/cache.keys';
 import { LiveResumePayload } from './types/live-resume.type';
+import { LiveEvent } from './types/live-event.type';
 
 @Injectable()
 export class LiveService {
@@ -11,7 +12,7 @@ export class LiveService {
 
     @Inject(forwardRef(() => MatchGateway))
     private readonly gateway: MatchGateway,
-  ) {}
+  ) { }
 
   emitScoreUpdate(matchId: string, payload: any) {
     this.gateway.emitScoreUpdate(matchId, payload);
@@ -31,5 +32,13 @@ export class LiveService {
       ...payload,
       updatedAt: Date.now(),
     });
+  }
+
+  async getLiveEvents(
+    matchId: string,
+  ): Promise<LiveEvent[] | null> {
+    return this.redis.get<LiveEvent[]>(
+      CacheKeys.liveEvents(matchId),
+    );
   }
 }

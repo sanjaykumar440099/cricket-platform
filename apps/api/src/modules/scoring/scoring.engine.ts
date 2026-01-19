@@ -2,6 +2,7 @@ import { BallEvent } from './domain/ball.event';
 import { InningsState } from './domain/innings.state';
 import { ScoringRules } from './domain/scoring.rules';
 import { ODI_POWERPLAYS } from './domain/powerplay.config';
+import { BallEventDto } from './dto/ball-event.dto';
 export class ScoringEngine {
   static applyBall(state: InningsState, event: BallEvent): InningsState {
 
@@ -80,16 +81,23 @@ export class ScoringEngine {
     };
   }
 
-  static calculateScore(state: InningsState) {
-    const balls = state.completedOvers * 6 + state.ballsInOver;
-    const overs = state.completedOvers + state.ballsInOver / 6;
+  calculateScore(balls: BallEventDto[]) {
+    let runs = 0;
+    let wickets = 0;
+    let validBalls = 0;
 
-    return {
-      runs: state.totalRuns,
-      wickets: state.wickets,
-      overs,
-      balls,
-      runRate: overs > 0 ? state.totalRuns / overs : 0,
-    };
+    for (const ball of balls) {
+      runs += ball.runs + (ball.extraRuns || 0);
+
+      if (ball.isWicket) wickets++;
+
+      if (ball.extraType !== 'wide' && ball.extraType !== 'no-ball') {
+        validBalls++;
+      }
+    }
+
+    const overs = `${Math.floor(validBalls / 6)}.${validBalls % 6}`;
+
+    return { runs, wickets, overs };
   }
 }

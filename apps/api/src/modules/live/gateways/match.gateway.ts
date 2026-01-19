@@ -3,6 +3,7 @@ import {
   WebSocketServer,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  SubscribeMessage,
 } from '@nestjs/websockets';
 import { UseGuards, Inject, forwardRef } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
@@ -16,19 +17,23 @@ import {
   decrementSpectators,
   getMatchState,
 } from '../../cache/match.cache';
+import { BallsService } from '../../balls/balls.service';
 
 @WebSocketGateway({ cors: { origin: '*' } })
 @UseGuards(WsAuthGuard)
+
 export class MatchGateway
-  implements OnGatewayConnection, OnGatewayDisconnect
-{
+ implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server!: Server;
 
   constructor(
     @Inject(forwardRef(() => LiveService))
     private readonly liveService: LiveService,
-  ) {}
+
+    @Inject(forwardRef(() => BallsService))
+    private readonly ballsService: BallsService,
+  ) { }
 
   async handleConnection(client: Socket) {
     const { matchId, lastEventId } = client.handshake.query as {
@@ -111,4 +116,6 @@ export class MatchGateway
   emitScoreUpdate(matchId: string, payload: any) {
     this.server.to(`match:${matchId}`).emit('scoreUpdate', payload);
   }
+
+  
 }

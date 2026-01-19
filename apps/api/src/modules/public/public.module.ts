@@ -7,7 +7,7 @@ import { PublicService } from './public.service';
 import { PublicController } from './public.controller';
 import { PublicMatchController } from './controllers/public-match.controller';
 import { PublicMatchService } from './services/public-match.service';
-
+import { CacheModule } from '../cache/cache.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -15,6 +15,7 @@ import { PublicMatchService } from './services/public-match.service';
       MatchEntity,
       BallEntity,
     ]),
+     CacheModule,
   ],
   providers: [PublicService, PublicMatchService],
   controllers: [PublicController, PublicMatchController],

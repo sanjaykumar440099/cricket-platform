@@ -35,4 +35,7 @@ export class MatchEntity {
 
   @CreateDateColumn()
   createdAt!: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  startTime!: Date | null;
 }

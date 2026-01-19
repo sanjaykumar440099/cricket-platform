@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { HealthModule } from './health/health.module';
 import { LiveModule } from './modules/live/live.module';
@@ -18,8 +19,11 @@ import { DlsModule } from './modules/dls/dls.module';
 import { TournamentsModule } from './modules/tournaments/tournaments.module';
 import { PlayoffsModule } from './modules/playoffs/playoffs.module';
 import { PublicModule } from './modules/public/public.module';
-import { RedisModule } from './modules/cache/redis.module';
-
+import { RedisModule } from './modules/redis/redis.module';
+import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
+import { RolesGuard } from './modules/auth/guards/roles.guard';
+import { CacheModule } from './modules/cache/cache.module';
+import { ScoringModule } from './modules/scoring/scoring.module';
 @Module({
     imports: [
         ConfigModule.forRoot({ isGlobal: true }),
@@ -41,9 +45,18 @@ import { RedisModule } from './modules/cache/redis.module';
         TournamentsModule,
         PlayoffsModule,
         PublicModule,
-        RedisModule
+        RedisModule,
+        CacheModule,
+        ScoringModule
     ],
     controllers: [],
-    providers: []
+    providers: [{
+        provide: APP_GUARD,
+        useClass: JwtAuthGuard,
+    },
+    {
+        provide: APP_GUARD,
+        useClass: RolesGuard,
+    }]
 })
 export class AppModule { }

@@ -6,7 +6,7 @@ import { PointsTableEntity } from '../tournaments/entities/points-table.entity';
 import { MatchEntity } from '../matches/entities/match.entity';
 import { BallEntity } from '../matches/entities/ball.entity';
 
-import { RedisService } from '../cache/redis.service';
+import { CacheService } from '../cache/cache.service';
 import { CacheKeys } from '../cache/cache.keys';
 
 @Injectable()
@@ -21,16 +21,13 @@ export class PublicService {
     @InjectRepository(BallEntity)
     private readonly ballRepo: Repository<BallEntity>,
 
-    private readonly redisService: RedisService,
+    private readonly cache: CacheService,
   ) {}
 
-  /* =========================
-     LEADERBOARD (CACHED)
-     ========================= */
   async getLeaderboard(tournamentId: string) {
     const cacheKey = CacheKeys.pointsTable(tournamentId);
 
-    const cached = await this.redisService.get(cacheKey);
+    const cached = await this.cache.getJSON(cacheKey);
     if (cached) return cached;
 
     const rows = await this.pointsRepo.find({
@@ -52,17 +49,14 @@ export class PublicService {
       })),
     };
 
-    await this.redisService.set(cacheKey, data, 60);
+    await this.cache.setJSON(cacheKey, data);
     return data;
   }
 
-  /* =========================
-     TEAM STATS (CACHED)
-     ========================= */
   async getTeamStats(tournamentId: string, teamId: string) {
     const cacheKey = `team:${tournamentId}:${teamId}`;
 
-    const cached = await this.redisService.get(cacheKey);
+    const cached = await this.cache.getJSON(cacheKey);
     if (cached) return cached;
 
     const row = await this.pointsRepo.findOne({
@@ -83,17 +77,14 @@ export class PublicService {
       netRunRate: row.netRunRate,
     };
 
-    await this.redisService.set(cacheKey, data, 60);
+    await this.cache.setJSON(cacheKey, data);
     return data;
   }
 
-  /* =========================
-     MATCH SUMMARY (CACHED)
-     ========================= */
   async getMatchSummary(matchId: string) {
     const cacheKey = CacheKeys.matchSummary(matchId);
 
-    const cached = await this.redisService.get(cacheKey);
+    const cached = await this.cache.getJSON(cacheKey);
     if (cached) return cached;
 
     const match = await this.matchRepo.findOne({
@@ -112,17 +103,14 @@ export class PublicService {
       winnerTeamId: match.winnerTeamId,
     };
 
-    await this.redisService.set(cacheKey, data, 30);
+    await this.cache.setJSON(cacheKey, data);
     return data;
   }
 
-  /* =========================
-     PLAYER STATS (CACHED)
-     ========================= */
   async getPlayerStats(playerId: string) {
     const cacheKey = `player:${playerId}`;
 
-    const cached = await this.redisService.get(cacheKey);
+    const cached = await this.cache.getJSON(cacheKey);
     if (cached) return cached;
 
     const balls = await this.ballRepo.find({
@@ -156,7 +144,7 @@ export class PublicService {
       wickets,
     };
 
-    await this.redisService.set(cacheKey, data, 30);
+    await this.cache.setJSON(cacheKey, data);
     return data;
   }
 }

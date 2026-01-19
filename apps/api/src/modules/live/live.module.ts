@@ -1,16 +1,27 @@
-import { Module, forwardRef } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { LiveService } from './live.service';
 import { MatchGateway } from './gateways/match.gateway';
-import { RedisModule } from '../cache/redis.module';
+import { LiveGateway } from './live.gateway';
+
+import { BallsModule } from '../balls/balls.module';
 import { AuthModule } from '../auth/auth.module';
+import { ScoringModule } from '../scoring/scoring.module';
+import { CacheModule } from '../cache/cache.module';
 
 @Module({
   imports: [
-    RedisModule,
-    forwardRef(() => LiveModule), // 👈 IMPORTANT
-    AuthModule
+    BallsModule,
+    AuthModule,     // for WsJwtGuard
+    ScoringModule,  // provides ScoringService
+    CacheModule,    // provides CacheService
   ],
-  providers: [LiveService, MatchGateway],
-  exports: [LiveService],
+  providers: [
+    LiveService,
+    MatchGateway,
+    LiveGateway,    // ✅ ONLY here
+  ],
+  exports: [
+    LiveGateway,    // optional but recommended
+  ],
 })
 export class LiveModule {}

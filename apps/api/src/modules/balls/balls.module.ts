@@ -7,7 +7,6 @@ import { MatchEntity } from '../matches/entities/match.entity';
 
 import { BallsService } from './balls.service';
 import { BallsController } from './balls.controller';
-import { LiveModule } from '../live/live.module';
 import { ScoresModule } from '../scores/scores.module';
 
 @Module({
@@ -17,10 +16,10 @@ import { ScoresModule } from '../scores/scores.module';
       InningsEntity,
       MatchEntity,
     ]),
-    LiveModule,
     ScoresModule,
   ],
   providers: [BallsService],
   controllers: [BallsController],
+  exports: [BallsService], // ✅ REQUIRED
 })
-export class BallsModule {}
+export class BallsModule { }

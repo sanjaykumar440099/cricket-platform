@@ -24,10 +24,7 @@ export class TournamentEntity {
   })
   format!: 'T20' | 'ODI' | 'TEST';
 
-  @ManyToMany(() => Team)
-  @JoinTable({
-    name: 'tournament_teams',
-  })
+  @OneToMany(() => Team, team => team.tournament)
   teams!: Team[];
 
   @OneToMany(() => MatchEntity, match => match.tournament)

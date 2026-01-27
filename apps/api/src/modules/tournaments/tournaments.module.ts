@@ -10,6 +10,7 @@ import { TournamentsController } from './tournaments.controller';
 // 👇 ADD THESE IMPORTS
 import { InningsEntity } from '../innings/entities/innings.entity';
 import { BallEntity } from '../matches/entities/ball.entity';
+import { Team } from '../teams/entities/team.entity';
 
 @Module({
   imports: [
@@ -17,7 +18,8 @@ import { BallEntity } from '../matches/entities/ball.entity';
       TournamentEntity,
       PointsTableEntity,
       InningsEntity,   
-      BallEntity,   
+      BallEntity,
+      Team   
     ]),
   ],
   providers: [TournamentsService, PointsTableService],

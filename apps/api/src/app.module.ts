@@ -24,6 +24,8 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/auth/guards/roles.guard';
 import { CacheModule } from './modules/cache/cache.module';
 import { ScoringModule } from './modules/scoring/scoring.module';
+import { TeamsModule } from './modules/teams/teams.module';
+import { PlayersModule } from './modules/players/player.module';
 @Module({
     imports: [
         ConfigModule.forRoot({ isGlobal: true }),
@@ -47,7 +49,9 @@ import { ScoringModule } from './modules/scoring/scoring.module';
         PublicModule,
         RedisModule,
         CacheModule,
-        ScoringModule
+        ScoringModule,
+        TeamsModule,
+        PlayersModule
     ],
     controllers: [],
     providers: [{

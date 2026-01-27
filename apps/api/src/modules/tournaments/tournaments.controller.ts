@@ -1,26 +1,51 @@
-import { Controller, Post, Get, Body, Param } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Patch,
+  Delete,
+  Param,
+  Body,
+} from '@nestjs/common';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '../users/enums/user-role.enum';
 import { TournamentsService } from './tournaments.service';
-import { PointsTableService } from './points-table.service';
 
-@Controller('tournaments')
+@Roles(UserRole.ADMIN)
+@Controller('admin/tournaments')
 export class TournamentsController {
-  constructor(
-    private readonly tournamentsService: TournamentsService,
-    private readonly pointsTableService: PointsTableService,
-  ) {}
+  constructor(private readonly service: TournamentsService) {}
 
   @Post()
   create(@Body() dto: any) {
-    return this.tournamentsService.create(dto);
+    return this.service.create(dto);
   }
 
   @Get()
-  list() {
-    return this.tournamentsService.list();
+  findAll() {
+    return this.service.findAll();
   }
 
-  @Get(':id/points-table')
-  getTable(@Param('id') id: string) {
-    return this.pointsTableService.getTable(id);
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.service.findOne(id);
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() dto: any) {
+    return this.service.update(id, dto);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.service.remove(id);
+  }
+
+  @Post(':id/teams/:teamId')
+  addTeam(
+    @Param('id') id: string,
+    @Param('teamId') teamId: string,
+  ) {
+    return this.service.addTeam(id, teamId);
   }
 }

@@ -10,14 +10,20 @@ import { PointsTableService } from '../tournaments/points-table.service';
 import { redis } from '../cache/redis.client';
 import { CacheKeys } from '../cache/cache.keys';
 import { cleanupMatch } from '../cache/match.cache';
+import { Team } from '../teams/entities/team.entity';
+import { TournamentEntity } from '../tournaments/entities/tournament.entity';
 
 @Injectable()
 export class MatchesService {
   constructor(
     @InjectRepository(MatchEntity)
     private readonly matchRepo: Repository<MatchEntity>,
+    @InjectRepository(Team)
+    private readonly teamRepo: Repository<Team>,
+     @InjectRepository(TournamentEntity)
+    private readonly tournamentRepo: Repository<TournamentEntity>,
     private readonly pointsTableService: PointsTableService
-  ) {}
+  ) { }
 
   async createMatch(dto: CreateMatchDto, user: JwtPayload) {
     if (!['admin', 'scorer'].includes(user.role)) {
@@ -103,4 +109,35 @@ export class MatchesService {
 
     return match;
   }
+
+  async scheduleMatch(dto: CreateMatchDto) {
+    const teamA = await this.teamRepo.findOne({
+      where: { id: dto.teamAId },
+    });
+    const teamB = await this.teamRepo.findOne({
+      where: { id: dto.teamBId },
+    });
+
+    if (!teamA || !teamB)
+      throw new NotFoundException('Team not found');
+
+    const match = this.matchRepo.create({
+      teamA,
+      teamB,
+      oversLimit: dto.oversLimit,
+      startTime: dto.startTime,
+    });
+
+    if (dto.tournamentId) {
+      const tournament = await this.tournamentRepo.findOne({
+        where: { id: dto.tournamentId },
+      });
+      if (!tournament)
+        throw new NotFoundException('Tournament not found');
+      match.tournament = tournament;
+    }
+
+    return this.matchRepo.save(match);
+  }
+
 }

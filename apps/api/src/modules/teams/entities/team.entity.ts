@@ -2,8 +2,8 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  OneToMany,
   ManyToOne,
+  OneToMany,
   CreateDateColumn,
 } from 'typeorm';
 import { Player } from '../../players/entities/player.entity';

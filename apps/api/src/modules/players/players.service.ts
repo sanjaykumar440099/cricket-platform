@@ -11,7 +11,7 @@ export class PlayersService {
     private readonly repo: Repository<Player>,
     @InjectRepository(Team)
     private readonly teamRepo: Repository<Team>,
-  ) {}
+  ) { }
 
   async create(dto: any) {
     const team = await this.teamRepo.findOne({
@@ -32,10 +32,36 @@ export class PlayersService {
     return this.repo.find({ relations: ['team'] });
   }
 
-  async remove(id: string) {
-    const player = await this.repo.findOne({ where: { id } });
-    if (!player) throw new NotFoundException('Player not found');
-    await this.repo.remove(player);
+
+  async findByTeam(teamId: string) {
+    return this.repo.find({
+      where: { team: { id: teamId } },
+    });
+  }
+
+  async createForTeam(
+    teamId: string,
+    dto: { name: string; role?: string },
+  ) {
+    const team = await this.teamRepo.findOne({
+      where: { id: teamId },
+    });
+
+    if (!team) {
+      throw new NotFoundException('Team not found');
+    }
+
+    const player = this.repo.create({
+      name: dto.name,
+      role: dto.role,
+      team,
+    });
+
+    return this.repo.save(player);
+  }
+
+  async remove(playerId: string) {
+    await this.repo.delete(playerId);
     return { deleted: true };
   }
 }

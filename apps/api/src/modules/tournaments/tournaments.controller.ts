@@ -40,12 +40,4 @@ export class TournamentsController {
   remove(@Param('id') id: string) {
     return this.service.remove(id);
   }
-
-  @Post(':id/teams/:teamId')
-  addTeam(
-    @Param('id') id: string,
-    @Param('teamId') teamId: string,
-  ) {
-    return this.service.addTeam(id, teamId);
-  }
 }

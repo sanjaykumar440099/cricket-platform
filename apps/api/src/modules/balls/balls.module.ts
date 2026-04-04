@@ -8,6 +8,7 @@ import { MatchEntity } from '../matches/entities/match.entity';
 import { BallsService } from './balls.service';
 import { BallsController } from './balls.controller';
 import { ScoresModule } from '../scores/scores.module';
+import { CommentaryModule } from '../commentary/commentary.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { ScoresModule } from '../scores/scores.module';
       MatchEntity,
     ]),
     ScoresModule,
+    CommentaryModule,
   ],
   providers: [BallsService],
   controllers: [BallsController],

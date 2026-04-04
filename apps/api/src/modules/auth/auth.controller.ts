@@ -5,12 +5,14 @@ import { UseGuards, Req } from '@nestjs/common';
 import { RefreshTokenGuard } from './guards/refresh-token.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Public } from './decorators/public.decorator';
+import { HttpUser } from './decorators/http-user.decorator';
+import { JwtPayload } from './types/jwt-payload.interface';
 
 @Controller('auth')
-@Public()
 export class AuthController {
   constructor(private readonly authService: AuthService) { }
 
+  @Public()
   @Post('register')
   register(
     @Body() body: { email: string; password: string; role?: UserRole },
@@ -18,10 +20,11 @@ export class AuthController {
     return this.authService.register(
       body.email,
       body.password,
-      body.role ?? UserRole.VIEWER,
+      UserRole.VIEWER,
     );
   }
 
+  @Public()
   @Post('login')
   login(@Body() body: { email: string; password: string }) {
     return this.authService.login(body.email, body.password);
@@ -39,7 +42,7 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Post('logout')
-  logout(@Req() req: any) {
-    return this.authService.logout(req.user.userId);
+  logout(@HttpUser() user: JwtPayload) {
+    return this.authService.logout(user.userId);
   }
 }

@@ -6,8 +6,13 @@ import { MatchesController } from './matches.controller';
 import { TournamentsModule } from '../tournaments/tournaments.module';
 import { Team } from '../teams/entities/team.entity';
 import { TournamentEntity } from '../tournaments/entities/tournament.entity';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 @Module({
-  imports: [TypeOrmModule.forFeature([MatchEntity, Team, TournamentEntity]), TournamentsModule],
+  imports: [
+    TypeOrmModule.forFeature([MatchEntity, Team, TournamentEntity]),
+    TournamentsModule,
+    SubscriptionsModule,
+  ],
   providers: [MatchesService],
   controllers: [MatchesController],
 })

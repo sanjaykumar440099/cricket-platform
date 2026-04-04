@@ -1,6 +1,8 @@
 import { Controller, Get, Param } from '@nestjs/common';
 import { PublicMatchService } from '../services/public-match.service';
+import { Public } from '../../auth/decorators/public.decorator';
 
+@Public()
 @Controller('public/matches')
 export class PublicMatchController {
   constructor(private readonly service: PublicMatchService) {}

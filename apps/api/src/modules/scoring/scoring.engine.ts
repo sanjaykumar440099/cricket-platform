@@ -29,7 +29,6 @@ export class ScoringEngine {
 
     // 2️⃣ Handle wicket
     if (event.isWicket) {
-      wickets += 1;
       if (!isFreeHit) {
         wickets += 1;
       }

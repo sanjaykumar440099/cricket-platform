@@ -20,7 +20,10 @@ export class WsAuthGuard implements CanActivate {
 
         try {
             const payload = this.jwtService.verify<JwtPayload>(token);
-            client.data.user = payload;
+            client.data.user = {
+                userId: payload.sub ?? payload.userId,
+                role: payload.role,
+            };
             return true;
         } catch {
             throw new UnauthorizedException('Invalid token');

@@ -12,6 +12,8 @@ import { CacheKeys } from '../cache/cache.keys';
 import { cleanupMatch } from '../cache/match.cache';
 import { Team } from '../teams/entities/team.entity';
 import { TournamentEntity } from '../tournaments/entities/tournament.entity';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { UserRole } from '../users/enums/user-role.enum';
 
 @Injectable()
 export class MatchesService {
@@ -20,15 +22,17 @@ export class MatchesService {
     private readonly matchRepo: Repository<MatchEntity>,
     @InjectRepository(Team)
     private readonly teamRepo: Repository<Team>,
-     @InjectRepository(TournamentEntity)
+    @InjectRepository(TournamentEntity)
     private readonly tournamentRepo: Repository<TournamentEntity>,
-    private readonly pointsTableService: PointsTableService
+    private readonly pointsTableService: PointsTableService,
+    private readonly subscriptionsService: SubscriptionsService,
   ) { }
 
   async createMatch(dto: CreateMatchDto, user: JwtPayload) {
-    if (!['admin', 'scorer'].includes(user.role)) {
+    if (![UserRole.ADMIN, UserRole.SCORER].includes(user.role)) {
       throw new ForbiddenException('Only admin/scorer can create match');
     }
+    await this.subscriptionsService.assertCanCreateMatch(user.userId);
 
     const match = this.matchRepo.create({
       teamAId: dto.teamAId,
@@ -37,13 +41,14 @@ export class MatchesService {
       tournamentId: dto.tournamentId ?? null,
       startTime: dto.startTime ?? null,
       status: 'scheduled',
+      createdByUserId: user.userId,
     } as Partial<MatchEntity>);
 
     return this.matchRepo.save(match);
   }
 
   async startMatch(matchId: string, user: JwtPayload) {
-    if (!['admin', 'scorer'].includes(user.role)) {
+    if (![UserRole.ADMIN, UserRole.SCORER].includes(user.role)) {
       throw new ForbiddenException();
     }
 
@@ -78,7 +83,7 @@ export class MatchesService {
     },
     user: JwtPayload,
   ) {
-    if (!['admin', 'scorer'].includes(user.role)) {
+    if (![UserRole.ADMIN, UserRole.SCORER].includes(user.role)) {
       throw new ForbiddenException();
     }
 
@@ -102,6 +107,10 @@ export class MatchesService {
         match.isTie,
         match.isNoResult,
       );
+      await this.pointsTableService.updateNRRForMatch(
+        match.id,
+        match.tournamentId,
+      );
     }
 
     // 🔴 CLEAN REDIS LIVE STATE
@@ -110,7 +119,9 @@ export class MatchesService {
     return match;
   }
 
-  async scheduleMatch(dto: CreateMatchDto) {
+  async scheduleMatch(dto: CreateMatchDto, user: JwtPayload) {
+    await this.subscriptionsService.assertCanCreateMatch(user.userId);
+
     const teamA = await this.teamRepo.findOne({
       where: { id: dto.teamAId },
     });
@@ -126,6 +137,7 @@ export class MatchesService {
       teamB,
       oversLimit: dto.oversLimit,
       startTime: dto.startTime,
+      createdByUserId: user.userId,
     });
 
     if (dto.tournamentId) {

@@ -15,8 +15,11 @@ export class MatchesController {
   // -------------------------
   @Roles(UserRole.ADMIN)
   @Post('schedule')
-  schedule(@Body() dto: CreateMatchDto) {
-    return this.matchesService.scheduleMatch(dto);
+  schedule(
+    @Body() dto: CreateMatchDto,
+    @HttpUser() user: JwtPayload,
+  ) {
+    return this.matchesService.scheduleMatch(dto, user);
   }
 
   // -------------------------

@@ -78,6 +78,9 @@ export class MatchEntity {
   @CreateDateColumn()
   createdAt!: Date;
 
+  @Column({ type: 'varchar', length: 36, nullable: true })
+  createdByUserId!: string | null;
+
   @Column({ type: 'timestamp', nullable: true })
   startTime!: Date | null;
 }

@@ -4,17 +4,22 @@ import * as bcrypt from 'bcrypt';
 import { UsersService } from '../users/users.service';
 import { UserRole } from '../users/enums/user-role.enum';
 import { ForbiddenException } from '@nestjs/common';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
+    private readonly subscriptionsService: SubscriptionsService,
   ) { }
 
   async register(email: string, password: string, role: UserRole) {
     const hash = await bcrypt.hash(password, 10);
-    return this.usersService.createUser(email, hash, role);
+    const user = await this.usersService.createUser(email, hash, role);
+    const subscription =
+      await this.subscriptionsService.ensureDefaultSubscription(user.id);
+    return { user, subscription };
   }
 
   async login(email: string, password: string) {
@@ -36,7 +41,12 @@ export class AuthService {
     const refreshHash = await bcrypt.hash(refreshToken, 10);
     await this.usersService.updateRefreshToken(user.id, refreshHash);
 
-    return { accessToken, refreshToken };
+    return {
+      accessToken,
+      refreshToken,
+      subscription:
+        await this.subscriptionsService.ensureDefaultSubscription(user.id),
+    };
   }
 
   private signAccessToken(userId: string, role: string) {

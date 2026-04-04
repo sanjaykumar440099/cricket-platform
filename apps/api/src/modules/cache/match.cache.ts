@@ -10,12 +10,12 @@ export async function getMatchState(matchId: string) {
     return data ? JSON.parse(data) : null;
 }
 
-export async function incrementSpectators(matchId: string) {
-    await redis.incr(CacheKeys.matchSpectators(matchId));
+export async function incrementSpectators(matchId: string, socketId: string) {
+    await redis.sadd(CacheKeys.matchSpectators(matchId), socketId);
 }
 
-export async function decrementSpectators(matchId: string) {
-    await redis.decr(CacheKeys.matchSpectators(matchId));
+export async function decrementSpectators(matchId: string, socketId: string) {
+    await redis.srem(CacheKeys.matchSpectators(matchId), socketId);
 }
 
 export async function bindSocketToMatch(socketId: string, matchId: string) {
@@ -35,7 +35,10 @@ export async function cleanupMatch(matchId: string) {
         CacheKeys.matchState(matchId),
         CacheKeys.matchScore(matchId),
         CacheKeys.matchSpectators(matchId),
-        CacheKeys.matchSnapshot(matchId)
+        CacheKeys.matchSnapshot(matchId),
+        CacheKeys.matchResume(matchId),
+        CacheKeys.liveScore(matchId),
+        CacheKeys.liveEvents(matchId)
     );
 
     await redis.srem(CacheKeys.liveMatches(), matchId);

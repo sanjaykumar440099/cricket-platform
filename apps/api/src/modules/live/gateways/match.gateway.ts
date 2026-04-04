@@ -50,7 +50,7 @@ export class MatchGateway
        1. Redis bindings (ONCE)
     ------------------------------ */
     await bindSocketToMatch(client.id, matchId);
-    await incrementSpectators(matchId);
+    await incrementSpectators(matchId, client.id);
 
     /* -----------------------------
        2. Join canonical room
@@ -109,7 +109,7 @@ export class MatchGateway
   async handleDisconnect(client: Socket) {
     const matchId = client.handshake.query.matchId as string;
     if (matchId) {
-      await decrementSpectators(matchId);
+      await decrementSpectators(matchId, client.id);
     }
   }
 

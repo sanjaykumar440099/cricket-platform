@@ -5,11 +5,6 @@ import { HealthModule } from './health/health.module';
 import { LiveModule } from './modules/live/live.module';
 import { typeOrmConfig } from '../src/database/ormconfig';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { MatchEntity } from './modules/matches/entities/match.entity';
-import { InningsEntity } from './modules/matches/entities/innings.entity';
-import { PlayerEntity } from './modules/matches/entities/player.entity';
-import { ScoreSnapshotEntity } from './modules/matches/entities/score-snapshot.entity';
-import { BallEntity } from './modules/matches/entities/ball.entity';
 import { BallsModule } from './modules/balls/balls.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { MatchesModule } from './modules/matches/matches.module';
@@ -26,6 +21,9 @@ import { CacheModule } from './modules/cache/cache.module';
 import { ScoringModule } from './modules/scoring/scoring.module';
 import { TeamsModule } from './modules/teams/teams.module';
 import { PlayersModule } from './modules/players/player.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { CommentaryModule } from './modules/commentary/commentary.module';
+import { ExportsModule } from './modules/exports/exports.module';
 @Module({
     imports: [
         ConfigModule.forRoot({ isGlobal: true }),
@@ -34,14 +32,12 @@ import { PlayersModule } from './modules/players/player.module';
             inject: [ConfigService],
             useFactory: typeOrmConfig,
         }),
-        TypeOrmModule.forFeature([InningsEntity, PlayerEntity, MatchEntity, ScoreSnapshotEntity, BallEntity]),
         HealthModule,
         LiveModule,
         AuthModule,
         MatchesModule,
         InningsModule,
         BallsModule,
-        LiveModule,
         ScoresModule,
         DlsModule,
         TournamentsModule,
@@ -51,7 +47,10 @@ import { PlayersModule } from './modules/players/player.module';
         CacheModule,
         ScoringModule,
         TeamsModule,
-        PlayersModule
+        PlayersModule,
+        SubscriptionsModule,
+        CommentaryModule,
+        ExportsModule,
     ],
     controllers: [],
     providers: [{

@@ -32,6 +32,9 @@ import { LiveEvent } from '../live/types/live-event.type';
 import { RedisService } from '../cache/redis.service';
 import { ScoreProjector } from '../scoring/score.projector';
 import { CacheService } from '../cache/cache.service';
+import { CommentaryService } from '../commentary/commentary.service';
+import { setMatchState } from '../cache/match.cache';
+import { UserRole } from '../users/enums/user-role.enum';
 
 @Injectable()
 export class BallsService {
@@ -47,11 +50,12 @@ export class BallsService {
 
     private readonly snapshotService: ScoreSnapshotService,
     private readonly cache: CacheService,
+    private readonly commentaryService: CommentaryService,
   ) { }
 
   async addBall(dto: CreateBallDto, user: JwtPayload) {
     /* 0️⃣ Role check */
-    if (!['admin', 'scorer'].includes(user.role)) {
+    if (![UserRole.ADMIN, UserRole.SCORER].includes(user.role)) {
       throw new ForbiddenException('Only scorers can add balls');
     }
 
@@ -171,7 +175,42 @@ export class BallsService {
     }
 
     const score = ScoreProjector.fromState(state);
-    return { score, state };
+    const commentary = await this.commentaryService.createForBall({
+      actorUserId: user.userId,
+      matchId: match.id,
+      inningsId: innings.id,
+      overNumber: ball.overNumber,
+      ballNumber: ball.ballNumber,
+      event,
+      state,
+    });
+
+    const resumePayload = {
+      matchId: match.id,
+      score,
+      state,
+      commentary,
+      lastBall: dto,
+      lastEventId: eventId,
+      updatedAt: Date.now(),
+    };
+
+    await this.cache.setJSON(
+      CacheKeys.liveScore(match.id),
+      {
+        state,
+        score,
+        lastEventId: eventId,
+        updatedAt: Date.now(),
+      },
+    );
+    await this.cache.setJSON(
+      CacheKeys.matchResume(match.id),
+      resumePayload,
+    );
+    await setMatchState(match.id, resumePayload);
+
+    return { score, state, commentary };
   }
 
 

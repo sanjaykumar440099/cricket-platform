@@ -1,4 +1,9 @@
-import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
@@ -17,6 +22,13 @@ import { UserRole } from '../users/enums/user-role.enum';
 
 @Injectable()
 export class MatchesService {
+  private readonly matchRelations = [
+    'teamA',
+    'teamB',
+    'winnerTeam',
+    'tournament',
+  ] as const;
+
   constructor(
     @InjectRepository(MatchEntity)
     private readonly matchRepo: Repository<MatchEntity>,
@@ -55,6 +67,25 @@ export class MatchesService {
     const match = await this.matchRepo.findOne({ where: { id: matchId } });
     if (!match) throw new NotFoundException('Match not found');
 
+    if (match.startTime) {
+      const startTime = new Date(match.startTime);
+      const scoringWindowOpensAt = new Date(
+        startTime.getTime() - 60 * 60 * 1000,
+      );
+
+      if (Date.now() < scoringWindowOpensAt.getTime()) {
+        throw new BadRequestException(
+          `Scoring opens at ${scoringWindowOpensAt.toLocaleString('en-IN', {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          })} for the scheduled start ${startTime.toLocaleString('en-IN', {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          })}.`,
+        );
+      }
+    }
+
     match.status = 'live';
     const saved = await this.matchRepo.save(match);
 
@@ -65,13 +96,19 @@ export class MatchesService {
   }
 
   async getMatch(matchId: string) {
-    const match = await this.matchRepo.findOne({ where: { id: matchId } });
+    const match = await this.matchRepo.findOne({
+      where: { id: matchId },
+      relations: [...this.matchRelations],
+    });
     if (!match) throw new NotFoundException();
     return match;
   }
 
   async listMatches() {
-    return this.matchRepo.find({ order: { createdAt: 'DESC' } });
+    return this.matchRepo.find({
+      relations: [...this.matchRelations],
+      order: { createdAt: 'DESC' },
+    });
   }
 
   async completeMatch(

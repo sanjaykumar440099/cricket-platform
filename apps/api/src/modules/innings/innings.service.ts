@@ -32,4 +32,20 @@ export class InningsService {
       { isCompleted: true },
     );
   }
+
+  findByMatch(matchId: string) {
+    return this.inningsRepo.find({
+      where: { matchId },
+      order: {
+        inningsNumber: 'ASC',
+        createdAt: 'ASC',
+      },
+    });
+  }
+
+  findOne(inningsId: string) {
+    return this.inningsRepo.findOne({
+      where: { id: inningsId },
+    });
+  }
 }

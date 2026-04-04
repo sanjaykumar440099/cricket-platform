@@ -62,7 +62,7 @@ export class MatchesController {
   // -------------------------
   // ADMIN — Complete Match
   // -------------------------
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.ADMIN, UserRole.SCORER)
   @Post(':id/complete')
   complete(
     @Param('id') id: string,

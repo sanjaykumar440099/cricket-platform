@@ -29,4 +29,9 @@ export class PublicController {
   playerStats(@Param('playerId') playerId: string) {
     return this.service.getPlayerStats(playerId);
   }
+
+  @Get('teams/:teamId/players')
+  teamPlayers(@Param('teamId') teamId: string) {
+    return this.service.getTeamPlayers(teamId);
+  }
 }

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
@@ -10,6 +11,20 @@ import { SubscriptionStatus } from './enums/subscription-status.enum';
 import { MatchEntity } from '../matches/entities/match.entity';
 import { SubscriptionEntitlements } from './types/subscription-entitlements.type';
 
+interface PlanCatalogItem {
+  plan: SubscriptionPlan;
+  name: string;
+  description: string;
+  price: number;
+  currency: string;
+  interval: 'month';
+  monthlyMatchLimit: number | null;
+  monthlyTournamentLimit: number | null;
+  features: string[];
+  highlighted?: boolean;
+  isEnterprise?: boolean;
+}
+
 @Injectable()
 export class SubscriptionsService {
   constructor(
@@ -19,12 +34,17 @@ export class SubscriptionsService {
     private readonly matchRepo: Repository<MatchEntity>,
   ) {}
 
-  getPlanCatalog() {
+  getPlanCatalog(): PlanCatalogItem[] {
     return [
       {
         plan: SubscriptionPlan.FREE,
+        name: 'Free',
+        description: 'For testing score entry and small local fixtures.',
         price: 0,
+        currency: 'USD',
+        interval: 'month',
         monthlyMatchLimit: 3,
+        monthlyTournamentLimit: 1,
         features: [
           'Basic live scoring',
           'Rule-based AI commentary',
@@ -33,8 +53,13 @@ export class SubscriptionsService {
       },
       {
         plan: SubscriptionPlan.BASIC,
+        name: 'Basic',
+        description: 'For clubs running recurring local tournaments.',
         price: 9,
+        currency: 'USD',
+        interval: 'month',
         monthlyMatchLimit: 25,
+        monthlyTournamentLimit: 5,
         features: [
           'Everything in Free',
           'Paid match exports',
@@ -44,8 +69,14 @@ export class SubscriptionsService {
       },
       {
         plan: SubscriptionPlan.PREMIUM,
+        name: 'Premium',
+        description: 'For organizers who need unlimited matches and richer match intelligence.',
         price: 29,
+        currency: 'USD',
+        interval: 'month',
         monthlyMatchLimit: null,
+        monthlyTournamentLimit: 25,
+        highlighted: true,
         features: [
           'Everything in Basic',
           'Unlimited matches',
@@ -53,7 +84,36 @@ export class SubscriptionsService {
           'Premium match intelligence output',
         ],
       },
+      {
+        plan: SubscriptionPlan.ENTERPRISE,
+        name: 'Enterprise',
+        description: 'Monthly SaaS billing for tournament networks, academies, and leagues.',
+        price: 149,
+        currency: 'USD',
+        interval: 'month',
+        monthlyMatchLimit: null,
+        monthlyTournamentLimit: null,
+        highlighted: true,
+        isEnterprise: true,
+        features: [
+          'Everything in Premium',
+          'Unlimited tournaments and venues',
+          'White-label live centre branding',
+          'Priority support for matchday operations',
+          'Enterprise billing metadata for provider integration',
+        ],
+      },
     ];
+  }
+
+  private getCatalogItem(plan: SubscriptionPlan): PlanCatalogItem {
+    const catalogItem = this.getPlanCatalog().find(item => item.plan === plan);
+
+    if (!catalogItem) {
+      throw new BadRequestException('Unsupported subscription plan.');
+    }
+
+    return catalogItem;
   }
 
   async ensureDefaultSubscription(userId: string) {
@@ -68,6 +128,12 @@ export class SubscriptionsService {
       plan: SubscriptionPlan.FREE,
       status: SubscriptionStatus.ACTIVE,
       provider: 'self-serve',
+      billingInterval: 'month',
+      monthlyPrice: 0,
+      currency: 'USD',
+      providerCustomerId: null,
+      providerSubscriptionId: null,
+      cancelAtPeriodEnd: false,
       currentPeriodStart: now,
       currentPeriodEnd: null,
     });
@@ -88,14 +154,26 @@ export class SubscriptionsService {
 
   async updatePlan(userId: string, plan: SubscriptionPlan) {
     const subscription = await this.ensureDefaultSubscription(userId);
+    const catalogItem = this.getCatalogItem(plan);
     const now = new Date();
     const periodEnd = new Date(now);
     periodEnd.setDate(periodEnd.getDate() + 30);
 
     subscription.plan = plan;
     subscription.status = SubscriptionStatus.ACTIVE;
-    subscription.provider =
-      plan === SubscriptionPlan.FREE ? 'self-serve' : 'mock-billing';
+    subscription.provider = this.providerForPlan(plan);
+    subscription.billingInterval = 'month';
+    subscription.monthlyPrice = catalogItem.price;
+    subscription.currency = catalogItem.currency;
+    subscription.providerCustomerId =
+      plan === SubscriptionPlan.FREE
+        ? null
+        : subscription.providerCustomerId ?? `cus_mock_${userId.slice(0, 8)}`;
+    subscription.providerSubscriptionId =
+      plan === SubscriptionPlan.FREE
+        ? null
+        : `${plan}_${now.getTime()}`;
+    subscription.cancelAtPeriodEnd = false;
     subscription.currentPeriodStart = now;
     subscription.currentPeriodEnd =
       plan === SubscriptionPlan.FREE ? null : periodEnd;
@@ -103,9 +181,44 @@ export class SubscriptionsService {
     return this.repo.save(subscription);
   }
 
+  async checkoutMonthly(userId: string, plan: SubscriptionPlan) {
+    const catalogItem = this.getCatalogItem(plan);
+    const subscription = await this.updatePlan(userId, plan);
+
+    return {
+      subscription,
+      billing: {
+        provider: subscription.provider,
+        interval: catalogItem.interval,
+        amount: catalogItem.price,
+        currency: catalogItem.currency,
+        status:
+          plan === SubscriptionPlan.ENTERPRISE
+            ? 'enterprise_monthly_active'
+            : 'monthly_subscription_active',
+      },
+    };
+  }
+
+  private providerForPlan(plan: SubscriptionPlan) {
+    if (plan === SubscriptionPlan.FREE) {
+      return 'self-serve';
+    }
+
+    if (plan === SubscriptionPlan.ENTERPRISE) {
+      return 'manual-enterprise-monthly';
+    }
+
+    return 'mock-billing';
+  }
+
   async cancel(userId: string) {
     const subscription = await this.ensureDefaultSubscription(userId);
-    subscription.status = SubscriptionStatus.CANCELED;
+    if (subscription.currentPeriodEnd && subscription.plan !== SubscriptionPlan.FREE) {
+      subscription.cancelAtPeriodEnd = true;
+    } else {
+      subscription.status = SubscriptionStatus.CANCELED;
+    }
     return this.repo.save(subscription);
   }
 
@@ -171,17 +284,43 @@ export class SubscriptionsService {
         ? subscription.plan
         : SubscriptionPlan.FREE;
 
-    if (activePlan === SubscriptionPlan.PREMIUM) {
+    if (activePlan === SubscriptionPlan.ENTERPRISE) {
       return {
         plan: activePlan,
         status: subscription.status,
         monthlyMatchLimit: null,
+        monthlyTournamentLimit: null,
+        monthlyPrice: subscription.monthlyPrice,
+        currency: subscription.currency,
         canExportMatches: true,
         canGenerateBasicCommentary: true,
         canGenerateAdvancedCommentary: true,
         canAccessAiSummary: true,
         commentaryStyle: 'advanced',
         hasPublicLiveWidgets: true,
+        hasPrioritySupport: true,
+        hasWhiteLabelBranding: true,
+        supportLevel: 'enterprise',
+      };
+    }
+
+    if (activePlan === SubscriptionPlan.PREMIUM) {
+      return {
+        plan: activePlan,
+        status: subscription.status,
+        monthlyMatchLimit: null,
+        monthlyTournamentLimit: 25,
+        monthlyPrice: subscription.monthlyPrice,
+        currency: subscription.currency,
+        canExportMatches: true,
+        canGenerateBasicCommentary: true,
+        canGenerateAdvancedCommentary: true,
+        canAccessAiSummary: true,
+        commentaryStyle: 'advanced',
+        hasPublicLiveWidgets: true,
+        hasPrioritySupport: true,
+        hasWhiteLabelBranding: false,
+        supportLevel: 'priority',
       };
     }
 
@@ -190,12 +329,18 @@ export class SubscriptionsService {
         plan: activePlan,
         status: subscription.status,
         monthlyMatchLimit: 25,
+        monthlyTournamentLimit: 5,
+        monthlyPrice: subscription.monthlyPrice,
+        currency: subscription.currency,
         canExportMatches: true,
         canGenerateBasicCommentary: true,
         canGenerateAdvancedCommentary: false,
         canAccessAiSummary: true,
         commentaryStyle: 'enhanced',
         hasPublicLiveWidgets: true,
+        hasPrioritySupport: false,
+        hasWhiteLabelBranding: false,
+        supportLevel: 'standard',
       };
     }
 
@@ -203,12 +348,18 @@ export class SubscriptionsService {
       plan: SubscriptionPlan.FREE,
       status: subscription.status,
       monthlyMatchLimit: 3,
+      monthlyTournamentLimit: 1,
+      monthlyPrice: 0,
+      currency: subscription.currency,
       canExportMatches: false,
       canGenerateBasicCommentary: true,
       canGenerateAdvancedCommentary: false,
       canAccessAiSummary: false,
       commentaryStyle: 'basic',
       hasPublicLiveWidgets: false,
+      hasPrioritySupport: false,
+      hasWhiteLabelBranding: false,
+      supportLevel: 'community',
     };
   }
 }

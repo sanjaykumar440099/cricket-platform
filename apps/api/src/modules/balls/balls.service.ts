@@ -50,6 +50,7 @@ export class BallsService {
 
     private readonly snapshotService: ScoreSnapshotService,
     private readonly cache: CacheService,
+    private readonly liveService: LiveService,
     private readonly commentaryService: CommentaryService,
   ) { }
 
@@ -146,22 +147,6 @@ export class BallsService {
     await this.snapshotService.upsertSnapshot(dto.inningsId, state, eventId);
 
     /* 8️⃣ Store live events (CacheService ONLY) */
-    const liveEvent: LiveEvent = {
-      eventId,
-      payload: { state, lastBall: dto },
-      timestamp: Date.now(),
-    };
-
-    const existingEvents =
-      (await this.cache.getJSON<LiveEvent[]>(
-        CacheKeys.liveEvents(match.id),
-      )) || [];
-
-    await this.cache.setJSON(
-      CacheKeys.liveEvents(match.id),
-      [...existingEvents, liveEvent].slice(-50),
-    );
-
     /* 9️⃣ Auto-end super over */
     if (
       innings.isSuperOver &&
@@ -195,6 +180,27 @@ export class BallsService {
       updatedAt: Date.now(),
     };
 
+    const liveEvent: LiveEvent = {
+      eventId,
+      matchId: match.id,
+      payload: {
+        score,
+        state,
+        commentary,
+        lastBall: dto,
+      },
+      timestamp: Date.now(),
+    };
+
+    const existingEvents =
+      (await this.cache.getJSON<LiveEvent[]>(
+        CacheKeys.liveEvents(match.id),
+      )) || [];
+
+    await this.cache.setJSON(
+      CacheKeys.liveEvents(match.id),
+      [...existingEvents, liveEvent].slice(-50),
+    );
     await this.cache.setJSON(
       CacheKeys.liveScore(match.id),
       {
@@ -210,7 +216,19 @@ export class BallsService {
     );
     await setMatchState(match.id, resumePayload);
 
-    return { score, state, commentary };
+    this.liveService.emitScoreUpdate(match.id, {
+      ...liveEvent,
+      ...liveEvent.payload,
+    });
+
+    return {
+      score,
+      state,
+      commentary,
+      lastBall: dto,
+      lastEventId: eventId,
+      event: liveEvent,
+    };
   }
 
 

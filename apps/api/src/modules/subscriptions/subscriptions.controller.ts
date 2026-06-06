@@ -32,7 +32,18 @@ export class SubscriptionsController {
     @HttpUser() user: JwtPayload,
     @Body() body: { plan: SubscriptionPlan },
   ) {
-    return this.subscriptionsService.updatePlan(
+    return this.subscriptionsService.checkoutMonthly(
+      user.userId,
+      body.plan,
+    );
+  }
+
+  @Post('checkout/monthly')
+  checkoutMonthly(
+    @HttpUser() user: JwtPayload,
+    @Body() body: { plan: SubscriptionPlan },
+  ) {
+    return this.subscriptionsService.checkoutMonthly(
       user.userId,
       body.plan,
     );

@@ -35,6 +35,24 @@ export class SubscriptionEntity {
   @Column({ type: 'varchar', length: 50, default: 'self-serve' })
   provider!: string;
 
+  @Column({ type: 'varchar', length: 20, default: 'month' })
+  billingInterval!: 'month';
+
+  @Column({ type: 'int', default: 0 })
+  monthlyPrice!: number;
+
+  @Column({ type: 'varchar', length: 3, default: 'USD' })
+  currency!: string;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  providerCustomerId!: string | null;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  providerSubscriptionId!: string | null;
+
+  @Column({ type: 'boolean', default: false })
+  cancelAtPeriodEnd!: boolean;
+
   @Column({ type: 'timestamp', nullable: true })
   currentPeriodStart!: Date | null;
 

@@ -9,6 +9,7 @@ import { BallsService } from './balls.service';
 import { BallsController } from './balls.controller';
 import { ScoresModule } from '../scores/scores.module';
 import { CommentaryModule } from '../commentary/commentary.module';
+import { LiveModule } from '../live/live.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { CommentaryModule } from '../commentary/commentary.module';
     ]),
     ScoresModule,
     CommentaryModule,
+    LiveModule,
   ],
   providers: [BallsService],
   controllers: [BallsController],

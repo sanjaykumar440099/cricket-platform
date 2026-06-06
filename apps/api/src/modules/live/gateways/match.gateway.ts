@@ -1,39 +1,21 @@
 import {
-  WebSocketGateway,
-  WebSocketServer,
   OnGatewayConnection,
   OnGatewayDisconnect,
-  SubscribeMessage,
+  WebSocketGateway,
+  WebSocketServer,
 } from '@nestjs/websockets';
-import { UseGuards, Inject, forwardRef } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
-
-import { WsAuthGuard } from '../guards/ws-auth.guard';
-import { LiveService } from '../live.service';
-
-import {
-  bindSocketToMatch,
-  incrementSpectators,
-  decrementSpectators,
-  getMatchState,
-} from '../../cache/match.cache';
-import { BallsService } from '../../balls/balls.service';
+import { CacheKeys } from '../../cache/cache.keys';
+import { CacheService } from '../../cache/cache.service';
+import { LiveEvent } from '../types/live-event.type';
 
 @WebSocketGateway({ cors: { origin: '*' } })
-@UseGuards(WsAuthGuard)
-
 export class MatchGateway
- implements OnGatewayConnection, OnGatewayDisconnect {
+  implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server!: Server;
 
-  constructor(
-    @Inject(forwardRef(() => LiveService))
-    private readonly liveService: LiveService,
-
-    @Inject(forwardRef(() => BallsService))
-    private readonly ballsService: BallsService,
-  ) { }
+  constructor(private readonly cache: CacheService) {}
 
   async handleConnection(client: Socket) {
     const { matchId, lastEventId } = client.handshake.query as {
@@ -46,76 +28,107 @@ export class MatchGateway
       return;
     }
 
-    /* -----------------------------
-       1. Redis bindings (ONCE)
-    ------------------------------ */
-    await bindSocketToMatch(client.id, matchId);
-    await incrementSpectators(matchId, client.id);
+    client.data.matchId = matchId;
+    client.join(this.room(matchId));
 
-    /* -----------------------------
-       2. Join canonical room
-    ------------------------------ */
-    client.join(`match:${matchId}`);
+    await this.cache.addToSet(
+      CacheKeys.matchSpectators(matchId),
+      client.id,
+    );
+    await this.emitSpectatorCount(matchId);
 
-    /* -----------------------------
-       3. Event-based resume (PRIMARY)
-    ------------------------------ */
-    const cached = await this.liveService.getLiveState(matchId);
-    if (!cached) return;
+    await this.resumeClient(client, matchId, lastEventId);
+  }
 
-    const clientLastEvent = lastEventId ? Number(lastEventId) : null;
+  async handleDisconnect(client: Socket) {
+    const matchId = client.data?.matchId as string | undefined;
+    if (!matchId) return;
 
-    // CASE 1: Fresh client → full state
-    if (!clientLastEvent) {
-      client.emit('resume', {
-        state: cached.state,
-        lastEventId: cached.lastEventId,
-      });
-      return;
-    }
+    await this.cache.removeFromSet(
+      CacheKeys.matchSpectators(matchId),
+      client.id,
+    );
+    await this.emitSpectatorCount(matchId);
+  }
 
-    // CASE 2: No gap → do nothing
-    if (clientLastEvent === cached.lastEventId) {
-      return;
-    }
+  emitScoreUpdate(matchId: string, payload: any) {
+    this.server.to(this.room(matchId)).emit('scoreUpdate', payload);
+    this.server.to(this.room(matchId)).emit('score.updated', payload);
+  }
 
-    // CASE 3: Try replay
-    const events = (await this.liveService.getLiveEvents(matchId)) || [];
-    const missed = events.filter(e => e.eventId > clientLastEvent);
+  private async resumeClient(
+    client: Socket,
+    matchId: string,
+    lastEventId?: string,
+  ) {
+    const [resumeState, events] = await Promise.all([
+      this.cache.getJSON<any>(CacheKeys.matchResume(matchId)),
+      this.cache.getJSON<LiveEvent[]>(CacheKeys.liveEvents(matchId)),
+    ]);
 
-    if (
-      missed.length === 0 ||
-      missed[0].eventId !== clientLastEvent + 1
-    ) {
-      /* -----------------------------
-         4. FALLBACK → Redis snapshot
-      ------------------------------ */
-      const snapshot = await getMatchState(matchId);
-      if (snapshot) {
-        client.emit('resume', {
-          state: snapshot,
-          lastEventId: cached.lastEventId,
-        });
+    const currentLastEventId =
+      resumeState?.lastEventId ?? this.lastEventId(events);
+    const clientLastEventId = lastEventId ? Number(lastEventId) : null;
+
+    if (!clientLastEventId || !currentLastEventId) {
+      if (resumeState) {
+        this.emitResume(client, resumeState, currentLastEventId);
       }
       return;
     }
 
-    // Replay missed events
+    if (clientLastEventId === currentLastEventId) {
+      return;
+    }
+
+    const missed = (events ?? []).filter(
+      event => event.eventId > clientLastEventId,
+    );
+    const canReplay =
+      missed.length > 0 &&
+      missed[0].eventId === clientLastEventId + 1;
+
+    if (!canReplay) {
+      if (resumeState) {
+        this.emitResume(client, resumeState, currentLastEventId);
+      }
+      return;
+    }
+
     for (const event of missed) {
       client.emit('scoreUpdate', event);
     }
   }
 
-  async handleDisconnect(client: Socket) {
-    const matchId = client.handshake.query.matchId as string;
-    if (matchId) {
-      await decrementSpectators(matchId, client.id);
+  private emitResume(
+    client: Socket,
+    state: any,
+    lastEventId?: number,
+  ) {
+    client.emit('resumeState', state);
+    client.emit('resume', {
+      state,
+      lastEventId: lastEventId ?? state?.lastEventId ?? null,
+    });
+  }
+
+  private async emitSpectatorCount(matchId: string) {
+    const count = await this.cache.countSet(
+      CacheKeys.matchSpectators(matchId),
+    );
+
+    this.server.to(this.room(matchId)).emit('spectatorCount', count);
+  }
+
+  private lastEventId(events: LiveEvent[] | null) {
+    if (!events?.length) {
+      return null;
     }
+
+    return events[events.length - 1].eventId;
   }
 
-  emitScoreUpdate(matchId: string, payload: any) {
-    this.server.to(`match:${matchId}`).emit('scoreUpdate', payload);
+  private room(matchId: string) {
+    return `match:${matchId}`;
   }
-
-  
 }

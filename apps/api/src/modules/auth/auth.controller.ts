@@ -17,10 +17,14 @@ export class AuthController {
   register(
     @Body() body: { email: string; password: string; role?: UserRole },
   ) {
+    const role = Object.values(UserRole).includes(body.role as UserRole)
+      ? body.role!
+      : UserRole.VIEWER;
+
     return this.authService.register(
       body.email,
       body.password,
-      UserRole.VIEWER,
+      role,
     );
   }
 

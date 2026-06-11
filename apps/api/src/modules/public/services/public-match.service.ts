@@ -23,19 +23,22 @@ export class PublicMatchService {
 
     const payload = resume ?? liveState;
 
-    if (!payload) {
-      throw new NotFoundException('Match not live');
-    }
-
     const match = await this.matchRepo.findOne({
       where: { id: matchId },
       relations: ['teamA', 'teamB', 'winnerTeam'],
     });
 
+    if (!match) {
+      throw new NotFoundException('Match not found');
+    }
+
+    if (!payload && match.status !== 'live') {
+      throw new NotFoundException('Match not live');
+    }
+
     return {
       matchId,
-      match: match
-        ? {
+      match: {
             id: match.id,
             tournamentId: match.tournamentId,
             status: match.status,
@@ -63,14 +66,13 @@ export class PublicMatchService {
                   shortName: match.winnerTeam.shortName ?? null,
                 }
               : null,
-          }
-        : null,
-      score: payload.score ?? payload.state ?? null,
-      state: payload.state ?? null,
-      lastBall: payload.lastBall ?? null,
-      commentary: payload.commentary ?? null,
+          },
+      score: payload?.score ?? null,
+      state: payload?.state ?? null,
+      lastBall: payload?.lastBall ?? null,
+      commentary: payload?.commentary ?? null,
       recentEvents: events ?? [],
-      lastEventId: payload.lastEventId ?? null,
+      lastEventId: payload?.lastEventId ?? null,
     };
   }
 
@@ -83,7 +85,20 @@ export class PublicMatchService {
   }
 
   async getLiveMatches() {
-    const matchIds = await redis.smembers(CacheKeys.liveMatches());
+    const [cachedMatchIds, databaseLiveMatches] = await Promise.all([
+      redis.smembers(CacheKeys.liveMatches()),
+      this.matchRepo.find({
+        where: { status: 'live' },
+        select: { id: true },
+      }),
+    ]);
+
+    const matchIds = Array.from(
+      new Set([
+        ...cachedMatchIds,
+        ...databaseLiveMatches.map(match => match.id),
+      ]),
+    );
 
     return {
       total: matchIds.length,

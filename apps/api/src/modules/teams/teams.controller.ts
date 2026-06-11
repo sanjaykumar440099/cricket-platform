@@ -15,11 +15,13 @@ export class TeamsController {
         return this.teams.create(dto);
     }
 
+    @Roles(UserRole.ADMIN, UserRole.SCORER)
     @Get()
     findAll() {
         return this.teams.findAll();
     }
 
+    @Roles(UserRole.ADMIN, UserRole.SCORER)
     @Get(':id')
     findOne(@Param('id') id: string) {
         return this.teams.findOne(id);

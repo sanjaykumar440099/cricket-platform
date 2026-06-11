@@ -14,6 +14,7 @@ import { PlayersService } from './players.service';
 export class TeamPlayersController {
   constructor(private readonly players: PlayersService) {}
 
+  @Roles(UserRole.ADMIN, UserRole.SCORER)
   @Get()
   findAll(@Param('teamId') teamId: string) {
     return this.players.findByTeam(teamId);

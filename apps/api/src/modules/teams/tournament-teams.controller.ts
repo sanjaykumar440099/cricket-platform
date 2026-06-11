@@ -17,6 +17,7 @@ export class TournamentTeamsController {
     return this.teams.createForTournament(tournamentId, dto);
   }
 
+  @Roles(UserRole.ADMIN, UserRole.SCORER)
   @Get()
   findAll(
     @Param('tournamentId') tournamentId: string,

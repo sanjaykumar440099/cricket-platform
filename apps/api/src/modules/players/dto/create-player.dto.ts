@@ -1,5 +1,14 @@
+import { IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+
 export class CreatePlayerDto {
+  @IsString()
+  @MinLength(2)
   name!: string;
+
+  @IsOptional()
+  @IsString()
   role?: string;
+
+  @IsUUID()
   teamId!: string;
 }

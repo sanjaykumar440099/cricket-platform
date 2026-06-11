@@ -1,6 +1,9 @@
 import {
   OnGatewayConnection,
   OnGatewayDisconnect,
+  ConnectedSocket,
+  MessageBody,
+  SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
@@ -24,20 +27,13 @@ export class MatchGateway
     };
 
     if (!matchId) {
-      client.disconnect();
+      client.emit('connectionReady', {
+        message: 'Connect with matchId query or emit joinMatch.',
+      });
       return;
     }
 
-    client.data.matchId = matchId;
-    client.join(this.room(matchId));
-
-    await this.cache.addToSet(
-      CacheKeys.matchSpectators(matchId),
-      client.id,
-    );
-    await this.emitSpectatorCount(matchId);
-
-    await this.resumeClient(client, matchId, lastEventId);
+    await this.joinMatchRoom(client, matchId, lastEventId);
   }
 
   async handleDisconnect(client: Socket) {
@@ -54,6 +50,62 @@ export class MatchGateway
   emitScoreUpdate(matchId: string, payload: any) {
     this.server.to(this.room(matchId)).emit('scoreUpdate', payload);
     this.server.to(this.room(matchId)).emit('score.updated', payload);
+  }
+
+  @SubscribeMessage('joinMatch')
+  async joinMatch(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: string | {
+      matchId?: string;
+      lastEventId?: number | string | null;
+    },
+  ) {
+    const matchId =
+      typeof payload === 'string' ? payload : payload?.matchId;
+    const lastEventId =
+      typeof payload === 'string' ? undefined : payload?.lastEventId;
+
+    if (!matchId) {
+      client.emit('joinMatchError', {
+        message: 'matchId is required to join a live match.',
+      });
+      return;
+    }
+
+    await this.joinMatchRoom(
+      client,
+      matchId,
+      lastEventId === null || lastEventId === undefined
+        ? undefined
+        : `${lastEventId}`,
+    );
+  }
+
+  private async joinMatchRoom(
+    client: Socket,
+    matchId: string,
+    lastEventId?: string,
+  ) {
+    const previousMatchId = client.data?.matchId as string | undefined;
+
+    if (previousMatchId && previousMatchId !== matchId) {
+      client.leave(this.room(previousMatchId));
+      await this.cache.removeFromSet(
+        CacheKeys.matchSpectators(previousMatchId),
+        client.id,
+      );
+      await this.emitSpectatorCount(previousMatchId);
+    }
+
+    client.data.matchId = matchId;
+    client.join(this.room(matchId));
+
+    await this.cache.addToSet(
+      CacheKeys.matchSpectators(matchId),
+      client.id,
+    );
+    await this.emitSpectatorCount(matchId);
+    await this.resumeClient(client, matchId, lastEventId);
   }
 
   private async resumeClient(
